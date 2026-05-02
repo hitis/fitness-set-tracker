@@ -3,14 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check } from "lucide-react";
-
-interface ExerciseInfo {
-  exercise_id: string;
-  exercise_name: string;
-  prescribed_sets: number;
-  prescribed_reps: string;
-  notes: string | null;
-}
+import type { DemoExercise } from "@/hooks/use-demo";
 
 interface PreviousPerformance {
   weight: number;
@@ -27,6 +20,7 @@ interface SetLog {
   notes: string;
   pain_flag: boolean;
   pain_area: string;
+  showNotes: boolean;
   saved: boolean;
 }
 
@@ -38,7 +32,7 @@ export function DemoExerciseLogger({
   onBack,
   onSaveSets,
 }: {
-  exercise: ExerciseInfo;
+  exercise: DemoExercise;
   previous: PreviousPerformance | null;
   onBack: () => void;
   onSaveSets: (count: number) => void;
@@ -46,12 +40,13 @@ export function DemoExerciseLogger({
   const [sets, setSets] = useState<SetLog[]>(() =>
     Array.from({ length: exercise.prescribed_sets }, (_, i) => ({
       set_number: i + 1,
-      weight: "",
-      reps: "",
-      rpe: "",
+      weight: previous ? previous.weight.toString() : "",
+      reps: previous ? previous.reps.toString() : "",
+      rpe: previous ? previous.rpe.toString() : "",
       notes: "",
       pain_flag: false,
       pain_area: "",
+      showNotes: false,
       saved: false,
     }))
   );
@@ -61,11 +56,26 @@ export function DemoExerciseLogger({
       const updated = prev.map((s) =>
         s.set_number === setNum ? { ...s, [field]: value, saved: false } : s
       );
-      // Auto-save locally
+      // Auto-save + auto-fill next set
       const setLog = updated.find((s) => s.set_number === setNum);
       if (setLog && (setLog.weight || setLog.reps)) {
         setTimeout(() => {
-          setSets((p) => p.map((s) => (s.set_number === setNum ? { ...s, saved: true } : s)));
+          setSets((p) => {
+            const withSaved = p.map((s) => (s.set_number === setNum ? { ...s, saved: true } : s));
+            // Auto-fill next empty set
+            const current = withSaved.find((s) => s.set_number === setNum);
+            if (current) {
+              const nextSet = withSaved.find((s) => s.set_number === setNum + 1 && !s.weight && !s.reps);
+              if (nextSet) {
+                return withSaved.map((s) =>
+                  s.set_number === nextSet.set_number
+                    ? { ...s, weight: current.weight, reps: current.reps, rpe: current.rpe }
+                    : s
+                );
+              }
+            }
+            return withSaved;
+          });
           onSaveSets(updated.filter((s) => s.weight || s.reps).length);
         }, 300);
       }
@@ -87,21 +97,21 @@ export function DemoExerciseLogger({
         </div>
       </div>
 
-      {exercise.notes && (
-        <div className="rounded-lg bg-secondary p-3">
-          <p className="text-sm text-muted-foreground">{exercise.notes}</p>
-        </div>
-      )}
-
       {previous && (
         <div className="rounded-lg bg-primary/10 p-3">
-          <p className="text-xs font-medium text-primary mb-1">Last Performance</p>
-          <p className="text-sm text-foreground">
-            {previous.weight} kg × {previous.reps} reps · RPE {previous.rpe}
+          <p className="text-xs font-medium text-primary mb-1">Last time</p>
+          <p className="text-sm font-semibold text-foreground">
+            {previous.weight}kg × {previous.reps} reps · RPE {previous.rpe}
           </p>
           {previous.notes && (
             <p className="text-xs text-muted-foreground mt-1 italic">{previous.notes}</p>
           )}
+        </div>
+      )}
+
+      {exercise.notes && (
+        <div className="rounded-lg bg-secondary p-3">
+          <p className="text-sm text-muted-foreground">{exercise.notes}</p>
         </div>
       )}
 
@@ -112,7 +122,7 @@ export function DemoExerciseLogger({
               <span className="text-sm font-semibold text-foreground">Set {set.set_number}</span>
               {set.saved && <Check className="h-4 w-4 text-primary" />}
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Weight (kg)</label>
                 <Input
@@ -120,7 +130,7 @@ export function DemoExerciseLogger({
                   inputMode="decimal"
                   value={set.weight}
                   onChange={(e) => updateSet(set.set_number, "weight", e.target.value)}
-                  className="h-12 bg-secondary text-center text-lg font-semibold"
+                  className="h-14 bg-secondary text-center text-xl font-bold"
                   placeholder="—"
                 />
               </div>
@@ -131,7 +141,7 @@ export function DemoExerciseLogger({
                   inputMode="numeric"
                   value={set.reps}
                   onChange={(e) => updateSet(set.set_number, "reps", e.target.value)}
-                  className="h-12 bg-secondary text-center text-lg font-semibold"
+                  className="h-14 bg-secondary text-center text-xl font-bold"
                   placeholder="—"
                 />
               </div>
@@ -144,19 +154,21 @@ export function DemoExerciseLogger({
                   max="10"
                   value={set.rpe}
                   onChange={(e) => updateSet(set.set_number, "rpe", e.target.value)}
-                  className="h-12 bg-secondary text-center text-lg font-semibold"
+                  className="h-14 bg-secondary text-center text-xl font-bold"
                   placeholder="—"
                 />
               </div>
             </div>
-            <Textarea
-              value={set.notes}
-              onChange={(e) => updateSet(set.set_number, "notes", e.target.value)}
-              className="bg-secondary text-sm"
-              placeholder="How did it feel?"
-              rows={1}
-            />
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-2">
+              {!set.showNotes ? (
+                <button
+                  onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, showNotes: true } : s))}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  + Notes
+                </button>
+              ) : null}
               <button
                 onClick={() => updateSet(set.set_number, "pain_flag", !set.pain_flag)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -168,24 +180,34 @@ export function DemoExerciseLogger({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Pain
               </button>
-              {set.pain_flag && (
-                <div className="flex flex-wrap gap-1">
-                  {PAIN_AREAS.map((area) => (
-                    <button
-                      key={area}
-                      onClick={() => updateSet(set.set_number, "pain_area", area)}
-                      className={`rounded-md px-2 py-1 text-xs capitalize transition-colors ${
-                        set.pain_area === area
-                          ? "bg-destructive/20 text-destructive"
-                          : "bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      {area}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+            {set.pain_flag && (
+              <div className="flex flex-wrap gap-1">
+                {PAIN_AREAS.map((area) => (
+                  <button
+                    key={area}
+                    onClick={() => updateSet(set.set_number, "pain_area", area)}
+                    className={`rounded-md px-2 py-1 text-xs capitalize transition-colors ${
+                      set.pain_area === area
+                        ? "bg-destructive/20 text-destructive"
+                        : "bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    {area}
+                  </button>
+                ))}
+              </div>
+            )}
+            {set.showNotes && (
+              <Textarea
+                value={set.notes}
+                onChange={(e) => updateSet(set.set_number, "notes", e.target.value)}
+                className="bg-secondary text-sm"
+                placeholder="How did it feel?"
+                rows={1}
+                autoFocus
+              />
+            )}
           </div>
         ))}
       </div>
