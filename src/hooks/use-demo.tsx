@@ -396,6 +396,26 @@ export function addDemoHistoryEntry(entry: typeof DEMO_MEMBER_HISTORY[number], d
   notifyHistoryUpdate();
 }
 
+// ─── Persisted demo role helpers ─────────────────────────────
+const DEMO_ROLE_KEY = "gymlog-demo-role";
+const DEMO_MODE_KEY = "gymlog-demo-mode";
+
+function getPersistedRole(): AppRole {
+  if (typeof window === "undefined") return "member";
+  return (localStorage.getItem(DEMO_ROLE_KEY) as AppRole) || "member";
+}
+
+function getPersistedDemoMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(DEMO_MODE_KEY) === "true";
+}
+
+export function clearDemoMode() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(DEMO_ROLE_KEY);
+  localStorage.removeItem(DEMO_MODE_KEY);
+}
+
 // ─── Context ─────────────────────────────────────────────────
 interface DemoContextValue {
   isDemoMode: boolean;
@@ -408,7 +428,11 @@ const DemoContext = createContext<DemoContextValue | null>(null);
 
 export function DemoProvider({ children, forceDemo }: { children: ReactNode; forceDemo?: boolean }) {
   const [isDemoMode] = useState(forceDemo ?? true);
-  const [role, setRole] = useState<AppRole>("member");
+  const [role, setRoleState] = useState<AppRole>("member");
+
+  const setRole = (r: AppRole) => {
+    setRoleState(r);
+  };
 
   return (
     <DemoContext.Provider value={{ isDemoMode, role, setRole, userId: DEMO_USER_ID }}>
@@ -419,7 +443,40 @@ export function DemoProvider({ children, forceDemo }: { children: ReactNode; for
 
 export function DemoProviderWithRole({ children, forceDemo, initialRole }: { children: ReactNode; forceDemo?: boolean; initialRole: AppRole }) {
   const [isDemoMode] = useState(forceDemo ?? true);
-  const [role, setRole] = useState<AppRole>(initialRole);
+  const [role, setRoleState] = useState<AppRole>(initialRole);
+
+  // Persist role changes to localStorage
+  const setRole = (r: AppRole) => {
+    setRoleState(r);
+    if (isDemoMode) {
+      localStorage.setItem(DEMO_ROLE_KEY, r);
+    }
+  };
+
+  // On mount, sync initial role to localStorage if demo
+  useState(() => {
+    if (isDemoMode && forceDemo) {
+      localStorage.setItem(DEMO_ROLE_KEY, initialRole);
+      localStorage.setItem(DEMO_MODE_KEY, "true");
+    }
+  });
+
+  return (
+    <DemoContext.Provider value={{ isDemoMode, role, setRole, userId: DEMO_USER_ID }}>
+      {children}
+    </DemoContext.Provider>
+  );
+}
+
+/** Auto-detects demo mode and role from localStorage. For use on sub-routes. */
+export function DemoProviderAuto({ children }: { children: ReactNode }) {
+  const isDemoMode = getPersistedDemoMode();
+  const [role, setRoleState] = useState<AppRole>(getPersistedRole());
+
+  const setRole = (r: AppRole) => {
+    setRoleState(r);
+    localStorage.setItem(DEMO_ROLE_KEY, r);
+  };
 
   return (
     <DemoContext.Provider value={{ isDemoMode, role, setRole, userId: DEMO_USER_ID }}>
