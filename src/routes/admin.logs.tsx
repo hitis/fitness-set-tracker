@@ -2,20 +2,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { AuthForm } from "@/components/AuthForm";
 import { AppShell } from "@/components/AppShell";
-import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
-import { TodayWorkout } from "@/components/member/TodayWorkout";
+import { AdminLogs } from "@/components/admin/AdminLogs";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/admin/logs")({
   head: () => ({
     meta: [
-      { title: "GymLog — Track Your Workouts" },
-      { name: "description", content: "Log your gym performance, track progress, and never forget what you lifted last time." },
+      { title: "Member Logs — GymLog Admin" },
+      { name: "description", content: "View member workout logs and performance data." },
     ],
   }),
-  component: Index,
+  component: AdminLogsPage,
 });
 
-function Index() {
+function AdminLogsPage() {
   const { user, role, loading, signOut } = useAuth();
 
   if (loading) {
@@ -26,13 +25,18 @@ function Index() {
     );
   }
 
-  if (!user || !role) {
-    return <AuthForm />;
+  if (!user || !role) return <AuthForm />;
+  if (role !== "admin") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground">Access denied</p>
+      </div>
+    );
   }
 
   return (
     <AppShell role={role} onSignOut={signOut}>
-      {role === "admin" ? <AdminWorkouts /> : <TodayWorkout user={user} />}
+      <AdminLogs />
     </AppShell>
   );
 }
