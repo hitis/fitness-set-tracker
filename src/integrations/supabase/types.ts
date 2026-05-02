@@ -166,8 +166,39 @@ export type Database = {
           },
         ]
       }
+      workout_blocks: {
+        Row: {
+          block_type: Database["public"]["Enums"]["block_type"]
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          sort_order: number
+          workout_id: string
+        }
+        Insert: {
+          block_type?: Database["public"]["Enums"]["block_type"]
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          sort_order?: number
+          workout_id: string
+        }
+        Update: {
+          block_type?: Database["public"]["Enums"]["block_type"]
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          sort_order?: number
+          workout_id?: string
+        }
+        Relationships: []
+      }
       workout_exercises: {
         Row: {
+          block_id: string | null
           exercise_id: string
           id: string
           notes: string | null
@@ -177,6 +208,7 @@ export type Database = {
           workout_id: string
         }
         Insert: {
+          block_id?: string | null
           exercise_id: string
           id?: string
           notes?: string | null
@@ -186,6 +218,7 @@ export type Database = {
           workout_id: string
         }
         Update: {
+          block_id?: string | null
           exercise_id?: string
           id?: string
           notes?: string | null
@@ -259,6 +292,17 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "member"
+      block_type:
+        | "main_lift"
+        | "accessory"
+        | "superset"
+        | "emom"
+        | "amrap"
+        | "tabata"
+        | "finisher"
+        | "conditioning"
+        | "core"
+        | "mobility"
       pain_area: "wrist" | "shoulder" | "back" | "knee" | "ankle" | "other"
       training_type:
         | "lower_body"
@@ -401,6 +445,18 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "member"],
+      block_type: [
+        "main_lift",
+        "accessory",
+        "superset",
+        "emom",
+        "amrap",
+        "tabata",
+        "finisher",
+        "conditioning",
+        "core",
+        "mobility",
+      ],
       pain_area: ["wrist", "shoulder", "back", "knee", "ankle", "other"],
       training_type: [
         "lower_body",
