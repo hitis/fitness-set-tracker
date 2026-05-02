@@ -14,16 +14,265 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      exercises: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_set_logs: {
+        Row: {
+          created_at: string
+          exercise_id: string
+          id: string
+          notes: string | null
+          pain_area: Database["public"]["Enums"]["pain_area"] | null
+          pain_flag: boolean
+          reps: number | null
+          rpe: number | null
+          set_number: number
+          user_id: string
+          weight: number | null
+          workout_id: string
+        }
+        Insert: {
+          created_at?: string
+          exercise_id: string
+          id?: string
+          notes?: string | null
+          pain_area?: Database["public"]["Enums"]["pain_area"] | null
+          pain_flag?: boolean
+          reps?: number | null
+          rpe?: number | null
+          set_number: number
+          user_id: string
+          weight?: number | null
+          workout_id: string
+        }
+        Update: {
+          created_at?: string
+          exercise_id?: string
+          id?: string
+          notes?: string | null
+          pain_area?: Database["public"]["Enums"]["pain_area"] | null
+          pain_flag?: boolean
+          reps?: number | null
+          rpe?: number | null
+          set_number?: number
+          user_id?: string
+          weight?: number | null
+          workout_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_set_logs_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_set_logs_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_workout_sessions: {
+        Row: {
+          completed: boolean
+          created_at: string
+          id: string
+          notes: string | null
+          session_rpe: number | null
+          user_id: string
+          workout_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_rpe?: number | null
+          user_id: string
+          workout_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          notes?: string | null
+          session_rpe?: number | null
+          user_id?: string
+          workout_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_workout_sessions_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workout_exercises: {
+        Row: {
+          exercise_id: string
+          id: string
+          notes: string | null
+          prescribed_reps: string
+          prescribed_sets: number
+          sort_order: number
+          workout_id: string
+        }
+        Insert: {
+          exercise_id: string
+          id?: string
+          notes?: string | null
+          prescribed_reps?: string
+          prescribed_sets?: number
+          sort_order?: number
+          workout_id: string
+        }
+        Update: {
+          exercise_id?: string
+          id?: string
+          notes?: string | null
+          prescribed_reps?: string
+          prescribed_sets?: number
+          sort_order?: number
+          workout_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_exercises_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_exercises_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workouts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          phase: Database["public"]["Enums"]["workout_phase"]
+          published: boolean
+          training_type: Database["public"]["Enums"]["training_type"]
+          workout_date: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          phase: Database["public"]["Enums"]["workout_phase"]
+          published?: boolean
+          training_type: Database["public"]["Enums"]["training_type"]
+          workout_date: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          phase?: Database["public"]["Enums"]["workout_phase"]
+          published?: boolean
+          training_type?: Database["public"]["Enums"]["training_type"]
+          workout_date?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "member"
+      pain_area: "wrist" | "shoulder" | "back" | "knee" | "ankle" | "other"
+      training_type:
+        | "lower_body"
+        | "upper_body"
+        | "full_body"
+        | "mobility"
+        | "conditioning"
+      workout_phase:
+        | "strength"
+        | "endurance"
+        | "hypertrophy"
+        | "power"
+        | "testing"
+        | "deload"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +399,24 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "member"],
+      pain_area: ["wrist", "shoulder", "back", "knee", "ankle", "other"],
+      training_type: [
+        "lower_body",
+        "upper_body",
+        "full_body",
+        "mobility",
+        "conditioning",
+      ],
+      workout_phase: [
+        "strength",
+        "endurance",
+        "hypertrophy",
+        "power",
+        "testing",
+        "deload",
+      ],
+    },
   },
 } as const
