@@ -32,10 +32,14 @@ export const Route = createRootRoute({
       { title: "GymLog — Track Your Workouts" },
       { name: "description", content: "Log your gym performance, track progress, and never forget what you lifted." },
       { property: "og:title", content: "GymLog — Track Your Workouts" },
-      { property: "og:description", content: "Log your gym performance, track progress." },
+      { property: "og:description", content: "Log your gym performance, track progress, and never forget what you lifted." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "GymLog — Track Your Workouts" },
+      { name: "twitter:description", content: "Log your gym performance, track progress, and never forget what you lifted." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8a74a159-0321-4d5c-80ec-e428c9f761e2/id-preview-d39ebff6--1c279954-b77f-4b63-8d3c-766dbb6938cb.lovable.app-1777720997479.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8a74a159-0321-4d5c-80ec-e428c9f761e2/id-preview-d39ebff6--1c279954-b77f-4b63-8d3c-766dbb6938cb.lovable.app-1777720997479.png" },
     ],
     links: [
       {
