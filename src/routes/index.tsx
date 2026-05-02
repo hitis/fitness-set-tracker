@@ -1,26 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/use-auth";
+import { AuthForm } from "@/components/AuthForm";
+import { AppShell } from "@/components/AppShell";
+import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
+import { TodayWorkout } from "@/components/member/TodayWorkout";
 
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "GymLog — Track Your Workouts" },
+      { name: "description", content: "Log your gym performance, track progress, and never forget what you lifted last time." },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
-
 function Index() {
-  return <PlaceholderIndex />;
+  const { user, role, loading, signOut } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user || !role) {
+    return <AuthForm />;
+  }
+
+  return (
+    <AppShell role={role} onSignOut={signOut}>
+      {role === "admin" ? <AdminWorkouts /> : <TodayWorkout user={user} />}
+    </AppShell>
+  );
 }
