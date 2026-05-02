@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Dumbbell, ClipboardList, History, LogOut, Settings } from "lucide-react";
+import { Dumbbell, ClipboardList, History, LogOut, User, LayoutDashboard } from "lucide-react";
 import type { AppRole } from "@/hooks/use-auth";
 import { useDemo } from "@/hooks/use-demo";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,15 +16,17 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
   const demo = useDemo();
   const isAdmin = demo.isDemoMode ? demo.role === "admin" : role === "admin";
 
-  const navItems = isAdmin
-    ? [
-        { to: "/", icon: ClipboardList, label: "Workouts" },
-        { to: "/admin/logs", icon: History, label: "Logs" },
-      ]
-    : [
-        { to: "/", icon: Dumbbell, label: "Today" },
-        { to: "/history", icon: History, label: "History" },
-      ];
+  const adminNav = [
+    { to: "/" as const, icon: LayoutDashboard, label: "Dashboard" },
+    { to: "/admin/logs" as const, icon: ClipboardList, label: "Logs" },
+  ];
+
+  const memberNav = [
+    { to: "/" as const, icon: Dumbbell, label: "Today" },
+    { to: "/history" as const, icon: History, label: "History" },
+  ];
+
+  const navItems = isAdmin ? adminNav : memberNav;
 
   const handleLogout = async () => {
     try {
@@ -36,47 +38,49 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex h-14 items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="h-5 w-5 text-primary" />
-            <span className="font-bold text-foreground">GymLog</span>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              <Dumbbell className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <span className="text-base font-bold tracking-tight text-foreground">GymLog</span>
             {isAdmin && (
-              <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                ADMIN
+              <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
+                Admin
               </span>
             )}
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             title="Logout"
           >
-            <LogOut className="h-5 w-5" />
-            <span className="text-xs font-medium">Logout</span>
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
 
         {demo.isDemoMode && (
-          <div className="border-t border-border px-4 py-2 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-primary">Demo data active</span>
+          <div className="border-t border-border px-4 py-1.5 flex items-center justify-between bg-primary/5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Demo</span>
             <div className="flex gap-1">
               <button
                 onClick={() => demo.setRole("member")}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-md px-3 py-1 text-[11px] font-bold transition-colors ${
                   demo.role === "member"
                     ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground"
+                    : "bg-secondary text-muted-foreground hover:text-foreground"
                 }`}
               >
                 Member
               </button>
               <button
                 onClick={() => demo.setRole("admin")}
-                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-md px-3 py-1 text-[11px] font-bold transition-colors ${
                   demo.role === "admin"
                     ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground"
+                    : "bg-secondary text-muted-foreground hover:text-foreground"
                 }`}
               >
                 Admin
@@ -88,19 +92,22 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
 
       <main className="flex-1 pb-20">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur">
-        <div className="flex h-16 items-center justify-around">
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex h-16 items-center justify-around px-2">
           {navItems.map((item) => {
             const active = location.pathname === item.to;
             return (
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex flex-col items-center gap-0.5 px-4 py-2 text-xs transition-colors ${
-                  active ? "text-primary" : "text-muted-foreground"
+                className={`flex flex-col items-center gap-1 rounded-xl px-5 py-2 text-[11px] font-medium transition-colors ${
+                  active
+                    ? "text-primary"
+                    : "text-muted-foreground"
                 }`}
               >
-                <item.icon className="h-5 w-5" />
+                <item.icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
                 {item.label}
               </Link>
             );
