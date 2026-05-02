@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
 import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
 import { TodayWorkout } from "@/components/member/TodayWorkout";
-import { DemoProviderWithRole, useDemo } from "@/hooks/use-demo";
+import { DemoProviderWithRole, useDemo, clearDemoMode } from "@/hooks/use-demo";
 import { DemoAdminWorkouts } from "@/components/admin/DemoAdminWorkouts";
 import { DemoTodayWorkout } from "@/components/member/DemoTodayWorkout";
 import { AuthForm } from "@/components/AuthForm";
@@ -40,7 +40,7 @@ function Index() {
   if (mode === "demo") {
     return (
       <DemoProviderWithRole forceDemo={true} initialRole={demoRole}>
-        <DemoIndexInner onExit={() => setMode("landing")} />
+        <DemoIndexInner onExit={() => { clearDemoMode(); setMode("landing"); }} />
       </DemoProviderWithRole>
     );
   }
