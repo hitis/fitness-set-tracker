@@ -33,6 +33,11 @@ export function DemoAdminWorkouts() {
                 <Badge variant="outline" className="text-xs">
                   {w.phase}
                 </Badge>
+                {"blocks" in w && (
+                  <Badge variant="outline" className="text-xs">
+                    {w.blocks.length} blocks
+                  </Badge>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
