@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import type { DemoExercise, PreviousEntry } from "@/hooks/use-demo";
 
@@ -17,6 +17,29 @@ interface SetLog {
   saved: boolean;
   errors: string[];
   deviationWarnings: string[];
+}
+
+interface FieldErrors {
+  weight?: string;
+  reps?: string;
+  rpe?: string;
+}
+
+function validateField(field: "weight" | "reps" | "rpe", value: string): string | undefined {
+  if (!value) return undefined;
+  if (field === "weight") {
+    const n = parseFloat(value);
+    if (isNaN(n) || n <= 0) return "Must be > 0";
+  }
+  if (field === "reps") {
+    const n = parseInt(value);
+    if (isNaN(n) || n <= 0) return "Must be > 0";
+  }
+  if (field === "rpe") {
+    const n = parseInt(value);
+    if (isNaN(n) || n < 1 || n > 10) return "1–10";
+  }
+  return undefined;
 }
 
 const PAIN_AREAS = ["wrist", "shoulder", "back", "knee", "ankle", "other"];
@@ -35,18 +58,25 @@ function sanitizeInteger(val: string): string {
   return val.replace(/[^0-9]/g, "");
 }
 
-function NumInput({ value, onChange, placeholder, mode }: {
-  value: string; onChange: (v: string) => void; placeholder: string; mode: "decimal" | "integer";
+function NumInput({ value, onChange, placeholder, mode, error, disabled }: {
+  value: string; onChange: (v: string) => void; placeholder: string; mode: "decimal" | "integer"; error?: string; disabled?: boolean;
 }) {
   return (
-    <input
-      type="text"
-      inputMode={mode === "decimal" ? "decimal" : "numeric"}
-      value={value}
-      onChange={(e) => onChange(mode === "decimal" ? sanitizeDecimal(e.target.value) : sanitizeInteger(e.target.value))}
-      className="flex h-14 w-full rounded-md border-0 bg-secondary px-3 py-1 text-center text-xl font-bold text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      placeholder={placeholder}
-    />
+    <div>
+      <input
+        type="text"
+        inputMode={mode === "decimal" ? "decimal" : "numeric"}
+        value={value}
+        onChange={(e) => onChange(mode === "decimal" ? sanitizeDecimal(e.target.value) : sanitizeInteger(e.target.value))}
+        disabled={disabled}
+        className={`flex h-14 w-full rounded-md px-3 py-1 text-center text-xl font-bold shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors ${
+          disabled ? "bg-secondary/50 text-muted-foreground cursor-not-allowed" :
+          error ? "bg-secondary border-2 border-destructive text-foreground" : "bg-secondary border-0 text-foreground"
+        }`}
+        placeholder={placeholder}
+      />
+      {error && <p className="text-[10px] text-destructive mt-1 font-medium">{error}</p>}
+    </div>
   );
 }
 
@@ -86,8 +116,22 @@ export function DemoExerciseLogger({
   );
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<number>>(new Set());
+  const [editingSet, setEditingSet] = useState<number | null>(null);
 
   const lastSessionAvg = getLastSessionAvgWeight(previousHistory);
+
+  // Real-time field-level validation
+  const fieldErrors = useMemo(() => {
+    const map: Record<number, FieldErrors> = {};
+    for (const s of sets) {
+      const errs: FieldErrors = {};
+      errs.weight = validateField("weight", s.weight);
+      errs.reps = validateField("reps", s.reps);
+      errs.rpe = validateField("rpe", s.rpe);
+      if (errs.weight || errs.reps || errs.rpe) map[s.set_number] = errs;
+    }
+    return map;
+  }, [sets]);
 
   const updateSet = (setNum: number, field: keyof SetLog, value: string | boolean) => {
     setSets((prev) =>
@@ -164,15 +208,21 @@ export function DemoExerciseLogger({
           : s
       );
     });
+    setEditingSet(setNum);
   };
 
   const historyToShow = showFullHistory ? previousHistory : previousHistory.slice(0, 2);
+
+  const hasFieldError = (setNum: number) => {
+    const e = fieldErrors[setNum];
+    return !!(e?.weight || e?.reps || e?.rpe);
+  };
 
   return (
     <div className="p-4 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+        <button onClick={onBack} className="flex h-11 w-11 items-center justify-center rounded-xl bg-card text-muted-foreground active:scale-95 transition-transform">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1">
@@ -239,70 +289,104 @@ export function DemoExerciseLogger({
       {/* Set Logging */}
       <div className="space-y-3">
         {sets.map((set) => (
-          <div key={set.set_number} className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div key={set.set_number} className={`rounded-xl border bg-card p-4 space-y-3 transition-colors ${
+            set.saved && editingSet !== set.set_number ? "border-primary/30" : "border-border"
+          }`}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-foreground">Set {set.set_number}</span>
               <div className="flex items-center gap-2">
                 {set.set_number > 1 && (
                   <button
                     onClick={() => copyLastSet(set.set_number)}
-                    className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    className="flex items-center gap-1 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-95"
                   >
                     <Copy className="h-3 w-3" />
                     Copy last
                   </button>
                 )}
-                {set.saved && (
-                  <div className="flex items-center gap-1 text-primary">
-                    <Check className="h-4 w-4" />
-                    <span className="text-[10px] font-bold">Saved</span>
+                {set.saved && editingSet !== set.set_number && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-primary">
+                      <Check className="h-4 w-4" />
+                      <span className="text-[10px] font-bold">Saved</span>
+                    </div>
+                    <button
+                      onClick={() => setEditingSet(set.set_number)}
+                      className="flex items-center gap-1 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-95"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Edit
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
-                <NumInput
-                  value={set.weight}
-                  onChange={(v) => updateSet(set.set_number, "weight", v)}
-                  placeholder="—"
-                  mode="decimal"
-                />
+            {/* Read-only view for saved sets not being edited */}
+            {set.saved && editingSet !== set.set_number ? (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-secondary/50 p-3 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Weight</p>
+                  <p className="text-lg font-bold text-foreground">{set.weight || "—"}</p>
+                </div>
+                <div className="rounded-lg bg-secondary/50 p-3 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Reps</p>
+                  <p className="text-lg font-bold text-foreground">{set.reps || "—"}</p>
+                </div>
+                <div className="rounded-lg bg-secondary/50 p-3 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">RPE</p>
+                  <p className="text-lg font-bold text-foreground">{set.rpe || "—"}</p>
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reps</label>
-                <NumInput
-                  value={set.reps}
-                  onChange={(v) => updateSet(set.set_number, "reps", v)}
-                  placeholder="—"
-                  mode="integer"
-                />
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
+                  <NumInput
+                    value={set.weight}
+                    onChange={(v) => updateSet(set.set_number, "weight", v)}
+                    placeholder="—"
+                    mode="decimal"
+                    error={fieldErrors[set.set_number]?.weight}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reps</label>
+                  <NumInput
+                    value={set.reps}
+                    onChange={(v) => updateSet(set.set_number, "reps", v)}
+                    placeholder="—"
+                    mode="integer"
+                    error={fieldErrors[set.set_number]?.reps}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">RPE (1-10)</label>
+                  <NumInput
+                    value={set.rpe}
+                    onChange={(v) => updateSet(set.set_number, "rpe", v)}
+                    placeholder="—"
+                    mode="integer"
+                    error={fieldErrors[set.set_number]?.rpe}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">RPE (1-10)</label>
-                <NumInput
-                  value={set.rpe}
-                  onChange={(v) => updateSet(set.set_number, "rpe", v)}
-                  placeholder="—"
-                  mode="integer"
-                />
-              </div>
-            </div>
+            )}
 
-            <div className="flex items-center gap-2">
+            {/* Actions row - only show for editable sets */}
+            {(!set.saved || editingSet === set.set_number) && (
+            <div className="flex items-center gap-2 flex-wrap">
               {!set.showNotes && (
                 <button
                   onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, showNotes: true } : s))}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors py-2 px-1"
                 >
                   + Notes
                 </button>
               )}
               <button
                 onClick={() => updateSet(set.set_number, "pain_flag", !set.pain_flag)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-medium transition-colors active:scale-95 ${
                   set.pain_flag
                     ? "bg-destructive/20 text-destructive"
                     : "bg-secondary text-muted-foreground"
@@ -311,15 +395,27 @@ export function DemoExerciseLogger({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Pain / Discomfort
               </button>
-              {!set.saved && (set.weight || set.reps) && set.errors.length === 0 && set.deviationWarnings.length === 0 && (
+              {(set.weight || set.reps) && set.errors.length === 0 && set.deviationWarnings.length === 0 && !hasFieldError(set.set_number) && (
                 <button
-                  onClick={() => saveSet(set.set_number)}
-                  className="ml-auto rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition-colors"
+                  onClick={() => {
+                    saveSet(set.set_number);
+                    setEditingSet(null);
+                  }}
+                  className="ml-auto rounded-lg bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground transition-colors active:scale-95"
                 >
-                  Save
+                  {editingSet === set.set_number ? "Save Changes" : "Save"}
+                </button>
+              )}
+              {editingSet === set.set_number && (
+                <button
+                  onClick={() => setEditingSet(null)}
+                  className="rounded-lg bg-secondary px-4 py-2.5 text-xs font-medium text-muted-foreground active:scale-95"
+                >
+                  Cancel
                 </button>
               )}
             </div>
+            )}
 
             {/* Validation Errors */}
             {set.errors.length > 0 && (
@@ -335,23 +431,28 @@ export function DemoExerciseLogger({
 
             {/* Deviation Warnings */}
             {set.deviationWarnings.length > 0 && (
-              <div className="rounded-lg bg-amber-900/20 border border-amber-500/30 p-3 space-y-2">
-                {set.deviationWarnings.map((w, wi) => (
-                  <p key={wi} className="flex items-start gap-2 text-xs text-amber-400">
-                    <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    {w}
-                  </p>
-                ))}
-                <div className="flex gap-2 pt-1">
+              <div className="rounded-lg bg-amber-900/20 border border-amber-500/30 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20">
+                    <Info className="h-4 w-4 text-amber-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-amber-400">Weight deviation detected</p>
+                </div>
+                <div className="space-y-1 pl-10">
+                  {set.deviationWarnings.map((w, wi) => (
+                    <p key={wi} className="text-xs text-amber-400/80">{w}</p>
+                  ))}
+                </div>
+                <div className="flex gap-2 pt-1 pl-10">
                   <button
-                    onClick={() => confirmAndSave(set.set_number)}
-                    className="rounded-md bg-primary px-3 py-1 text-xs font-bold text-primary-foreground"
+                    onClick={() => { confirmAndSave(set.set_number); setEditingSet(null); }}
+                    className="rounded-md bg-primary px-4 py-2 text-xs font-bold text-primary-foreground active:scale-95"
                   >
                     Confirm & Save
                   </button>
                   <button
                     onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, deviationWarnings: [] } : s))}
-                    className="rounded-md bg-secondary px-3 py-1 text-xs text-muted-foreground"
+                    className="rounded-md bg-secondary px-4 py-2 text-xs text-muted-foreground active:scale-95"
                   >
                     Edit
                   </button>
@@ -393,7 +494,7 @@ export function DemoExerciseLogger({
         ))}
       </div>
 
-      <Button variant="secondary" onClick={onBack} className="h-12 w-full text-base font-semibold">
+      <Button variant="secondary" onClick={onBack} className="h-14 w-full text-base font-semibold active:scale-[0.98]">
         ← Back to Workout
       </Button>
     </div>
