@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dumbbell } from "lucide-react";
 
-export function AuthForm() {
+export function AuthForm({ onBack }: { onBack?: () => void }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -97,6 +97,18 @@ export function AuthForm() {
             {isLogin ? "Sign Up" : "Sign In"}
           </button>
         </p>
+
+        {onBack && (
+          <p className="text-center">
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ← Back to Demo
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -71,6 +71,17 @@ export function DemoProvider({ children, forceDemo }: { children: ReactNode; for
   );
 }
 
+export function DemoProviderWithRole({ children, forceDemo, initialRole }: { children: ReactNode; forceDemo?: boolean; initialRole: AppRole }) {
+  const [isDemoMode] = useState(forceDemo ?? true);
+  const [role, setRole] = useState<AppRole>(initialRole);
+
+  return (
+    <DemoContext.Provider value={{ isDemoMode, role, setRole, userId: DEMO_USER_ID }}>
+      {children}
+    </DemoContext.Provider>
+  );
+}
+
 export function useDemo() {
   const ctx = useContext(DemoContext);
   if (!ctx) throw new Error("useDemo must be inside DemoProvider");
