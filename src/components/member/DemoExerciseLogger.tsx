@@ -147,7 +147,7 @@ export function DemoExerciseLogger({
     setDismissedWarnings((prev) => new Set(prev).add(setNum));
     setSets((prev) => {
       const updated = prev.map((s) =>
-        s.set_number === setNum ? { ...s, saved: true, warnings: [] } : s
+        s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
       return updated;
