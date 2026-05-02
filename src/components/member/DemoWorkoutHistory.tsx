@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronRight, AlertTriangle, Check } from "lucide-react";
-import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail } from "@/hooks/use-demo";
+import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X } from "lucide-react";
+import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryEntry } from "@/hooks/use-demo";
 
 function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
   return (
@@ -79,6 +79,7 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
 export function DemoWorkoutHistory() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     return onHistoryUpdate(() => forceUpdate((n) => n + 1));
@@ -91,16 +92,47 @@ export function DemoWorkoutHistory() {
     }
   }
 
+  // Filter history by exercise name search
+  const filteredHistory = searchQuery.trim()
+    ? DEMO_MEMBER_HISTORY.filter((h) => {
+        const detail = DEMO_HISTORY_DETAILS[h.id];
+        if (!detail) return false;
+        return detail.exercises.some((ex) =>
+          ex.exercise_name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      })
+    : DEMO_MEMBER_HISTORY;
+
   return (
     <div className="p-4 space-y-4">
       <h2 className="text-lg font-bold text-foreground">Workout History</h2>
-      {DEMO_MEMBER_HISTORY.length === 0 ? (
+
+      {/* Search */}
+      {DEMO_MEMBER_HISTORY.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by exercise name..."
+            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {filteredHistory.length === 0 ? (
         <p className="py-12 text-center text-muted-foreground">
-          No workout history yet. Complete a workout to see it here.
+          {searchQuery ? "No workouts found matching your search." : "No workout history yet. Complete a workout to see it here."}
         </p>
       ) : (
         <div className="space-y-2">
-          {DEMO_MEMBER_HISTORY.map((h) => (
+          {filteredHistory.map((h) => (
             <button
               key={h.id}
               onClick={() => setSelectedId(h.id)}
