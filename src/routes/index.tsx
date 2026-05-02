@@ -27,7 +27,6 @@ function Index() {
   const [demoRole, setDemoRole] = useState<AppRole>("member");
   const { user, role, loading, signOut } = useAuth();
 
-  // If authenticated, show live app
   if (!loading && user && role) {
     return (
       <DemoProviderWithRole forceDemo={false} initialRole={role}>
@@ -38,7 +37,6 @@ function Index() {
     );
   }
 
-  // Demo mode
   if (mode === "demo") {
     return (
       <DemoProviderWithRole forceDemo={true} initialRole={demoRole}>
@@ -47,29 +45,29 @@ function Index() {
     );
   }
 
-  // Login screen
   if (mode === "login") {
     return <AuthForm onBack={() => setMode("landing")} />;
   }
 
-  // Landing screen
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm space-y-8 text-center">
-        <div>
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-primary">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+      <div className="w-full max-w-sm space-y-10 text-center">
+        <div className="space-y-4">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/20">
             <Dumbbell className="h-10 w-10 text-primary-foreground" />
           </div>
-          <h1 className="mt-6 text-3xl font-bold text-foreground tracking-tight">GymLog</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Track your lifts. Know what you did last time.
-          </p>
+          <div>
+            <h1 className="text-3xl font-extrabold text-foreground tracking-tight">GymLog</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track your lifts. Know what you did last time.
+            </p>
+          </div>
         </div>
 
         <div className="space-y-3">
           <Button
             onClick={() => { setDemoRole("member"); setMode("demo"); }}
-            className="h-14 w-full text-base font-bold"
+            className="h-14 w-full text-base font-bold shadow-lg shadow-primary/20"
             size="lg"
           >
             Try Demo as Member
@@ -77,14 +75,14 @@ function Index() {
           <Button
             onClick={() => { setDemoRole("admin"); setMode("demo"); }}
             variant="secondary"
-            className="h-14 w-full text-base font-bold"
+            className="h-14 w-full text-base font-bold border border-border"
             size="lg"
           >
             Try Demo as Admin
           </Button>
         </div>
 
-        <div className="pt-4 border-t border-border">
+        <div className="pt-6 border-t border-border">
           <button
             onClick={() => setMode("login")}
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
