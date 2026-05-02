@@ -1,16 +1,65 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { AppRole } from "@/hooks/use-auth";
 
+// ─── Types ───────────────────────────────────────────────────
+export type BlockType = "main_lift" | "accessory" | "superset" | "emom" | "amrap" | "tabata" | "finisher" | "conditioning" | "core" | "mobility";
+
+export interface DemoBlock {
+  id: string;
+  name: string;
+  block_type: BlockType;
+  notes: string | null;
+  sort_order: number;
+  exercises: DemoExercise[];
+}
+
+export interface DemoExercise {
+  id: string;
+  exercise_id: string;
+  exercise_name: string;
+  prescribed_sets: number;
+  prescribed_reps: string;
+  notes: string | null;
+  sort_order: number;
+}
+
 // ─── Mock Data ───────────────────────────────────────────────
 const DEMO_USER_ID = "demo-user-001";
 const DEMO_WORKOUT_ID = "demo-workout-001";
 
-const DEMO_EXERCISES = [
-  { id: "ex-1", exercise_id: "exd-1", exercise_name: "Back Squat", prescribed_sets: 4, prescribed_reps: "6-8", notes: "Focus on depth, pause at bottom", sort_order: 0 },
-  { id: "ex-2", exercise_id: "exd-2", exercise_name: "Romanian Deadlift", prescribed_sets: 3, prescribed_reps: "8-10", notes: "Slow eccentric, feel hamstrings", sort_order: 1 },
-  { id: "ex-3", exercise_id: "exd-3", exercise_name: "Bulgarian Split Squat", prescribed_sets: 3, prescribed_reps: "10 each", notes: null, sort_order: 2 },
-  { id: "ex-4", exercise_id: "exd-4", exercise_name: "Leg Press", prescribed_sets: 4, prescribed_reps: "10-12", notes: "Feet high and wide", sort_order: 3 },
-  { id: "ex-5", exercise_id: "exd-5", exercise_name: "Seated Calf Raise", prescribed_sets: 3, prescribed_reps: "15-20", notes: "Full stretch at bottom", sort_order: 4 },
+const DEMO_BLOCKS: DemoBlock[] = [
+  {
+    id: "block-1",
+    name: "Main Lift",
+    block_type: "main_lift",
+    notes: null,
+    sort_order: 0,
+    exercises: [
+      { id: "ex-1", exercise_id: "exd-1", exercise_name: "Back Squat", prescribed_sets: 4, prescribed_reps: "6-8", notes: "Focus on depth, pause at bottom", sort_order: 0 },
+    ],
+  },
+  {
+    id: "block-2",
+    name: "Accessory",
+    block_type: "accessory",
+    notes: null,
+    sort_order: 1,
+    exercises: [
+      { id: "ex-2", exercise_id: "exd-2", exercise_name: "Romanian Deadlift", prescribed_sets: 3, prescribed_reps: "8-10", notes: "Slow eccentric, feel hamstrings", sort_order: 0 },
+      { id: "ex-3", exercise_id: "exd-3", exercise_name: "Bulgarian Split Squat", prescribed_sets: 3, prescribed_reps: "10 each", notes: null, sort_order: 1 },
+      { id: "ex-4", exercise_id: "exd-4", exercise_name: "Leg Press", prescribed_sets: 4, prescribed_reps: "10-12", notes: "Feet high and wide", sort_order: 2 },
+    ],
+  },
+  {
+    id: "block-3",
+    name: "Finisher",
+    block_type: "finisher",
+    notes: "Push through, keep rest under 60s",
+    sort_order: 2,
+    exercises: [
+      { id: "ex-5", exercise_id: "exd-5", exercise_name: "Seated Calf Raise", prescribed_sets: 3, prescribed_reps: "15-20", notes: "Full stretch at bottom", sort_order: 0 },
+    ],
+  },
 ];
 
 export const DEMO_TODAY_WORKOUT = {
@@ -20,7 +69,7 @@ export const DEMO_TODAY_WORKOUT = {
   phase: "strength",
   notes: "Week 3 — push intensity. Track RPE carefully.",
   published: true,
-  exercises: DEMO_EXERCISES,
+  blocks: DEMO_BLOCKS,
 };
 
 export const DEMO_PREVIOUS_PERFORMANCE: Record<string, { weight: number; reps: number; rpe: number; notes: string | null }> = {
