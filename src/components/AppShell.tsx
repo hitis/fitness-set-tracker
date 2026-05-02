@@ -1,7 +1,8 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Dumbbell, ClipboardList, History, LogOut, Settings } from "lucide-react";
 import type { AppRole } from "@/hooks/use-auth";
 import { useDemo } from "@/hooks/use-demo";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ interface AppShellProps {
 
 export function AppShell({ children, role, onSignOut }: AppShellProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const demo = useDemo();
   const isAdmin = demo.isDemoMode ? demo.role === "admin" : role === "admin";
 
@@ -23,6 +25,14 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
         { to: "/", icon: Dumbbell, label: "Today" },
         { to: "/history", icon: History, label: "History" },
       ];
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    onSignOut();
+    navigate({ to: "/" });
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -37,11 +47,14 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
               </span>
             )}
           </div>
-          {!demo.isDemoMode && (
-            <button onClick={onSignOut} className="p-2 text-muted-foreground hover:text-foreground">
-              <LogOut className="h-5 w-5" />
-            </button>
-          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            title="Logout"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="text-xs font-medium">Logout</span>
+          </button>
         </div>
 
         {demo.isDemoMode && (
