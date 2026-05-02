@@ -1,6 +1,15 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { AppRole } from "@/hooks/use-auth";
 
+// ─── Callback for history updates ────────────────────────────
+type HistoryUpdateCallback = () => void;
+let historyUpdateListeners: HistoryUpdateCallback[] = [];
+export function onHistoryUpdate(cb: HistoryUpdateCallback) {
+  historyUpdateListeners.push(cb);
+  return () => { historyUpdateListeners = historyUpdateListeners.filter((l) => l !== cb); };
+}
+function notifyHistoryUpdate() { historyUpdateListeners.forEach((cb) => cb()); }
+
 // ─── Types ───────────────────────────────────────────────────
 export type BlockType = "main_lift" | "accessory" | "superset" | "emom" | "amrap" | "tabata" | "finisher" | "conditioning" | "core" | "mobility";
 
@@ -80,39 +89,110 @@ export const DEMO_TODAY_WORKOUT = {
 };
 
 // Previous performance: last 3 entries per exercise
-export interface PreviousEntry {
-  date: string;
+export interface PreviousSetEntry {
+  set_number: number;
   weight: number;
   reps: number;
   rpe: number;
+}
+
+export interface PreviousEntry {
+  date: string;
+  sets: PreviousSetEntry[];
   notes: string | null;
 }
 
 export const DEMO_EXERCISE_HISTORY: Record<string, PreviousEntry[]> = {
   "exd-1": [
-    { date: daysAgo(2), weight: 100, reps: 8, rpe: 8, notes: "Felt good, could go heavier" },
-    { date: daysAgo(9), weight: 95, reps: 8, rpe: 7, notes: "Smooth reps" },
-    { date: daysAgo(16), weight: 90, reps: 8, rpe: 7, notes: null },
+    { date: daysAgo(2), sets: [
+      { set_number: 1, weight: 100, reps: 8, rpe: 8 },
+      { set_number: 2, weight: 100, reps: 8, rpe: 8 },
+      { set_number: 3, weight: 95, reps: 8, rpe: 9 },
+      { set_number: 4, weight: 95, reps: 7, rpe: 9 },
+    ], notes: "Felt good, could go heavier" },
+    { date: daysAgo(9), sets: [
+      { set_number: 1, weight: 95, reps: 8, rpe: 7 },
+      { set_number: 2, weight: 95, reps: 8, rpe: 7 },
+      { set_number: 3, weight: 90, reps: 8, rpe: 8 },
+      { set_number: 4, weight: 90, reps: 8, rpe: 8 },
+    ], notes: "Smooth reps" },
+    { date: daysAgo(16), sets: [
+      { set_number: 1, weight: 90, reps: 8, rpe: 7 },
+      { set_number: 2, weight: 90, reps: 8, rpe: 7 },
+      { set_number: 3, weight: 85, reps: 8, rpe: 7 },
+      { set_number: 4, weight: 85, reps: 8, rpe: 7 },
+    ], notes: null },
   ],
   "exd-2": [
-    { date: daysAgo(2), weight: 80, reps: 10, rpe: 7, notes: null },
-    { date: daysAgo(9), weight: 75, reps: 10, rpe: 7, notes: "Good stretch" },
-    { date: daysAgo(16), weight: 70, reps: 10, rpe: 6, notes: null },
+    { date: daysAgo(2), sets: [
+      { set_number: 1, weight: 80, reps: 10, rpe: 7 },
+      { set_number: 2, weight: 80, reps: 10, rpe: 7 },
+      { set_number: 3, weight: 80, reps: 9, rpe: 8 },
+    ], notes: null },
+    { date: daysAgo(9), sets: [
+      { set_number: 1, weight: 75, reps: 10, rpe: 7 },
+      { set_number: 2, weight: 75, reps: 10, rpe: 7 },
+      { set_number: 3, weight: 75, reps: 10, rpe: 7 },
+    ], notes: "Good stretch" },
+    { date: daysAgo(16), sets: [
+      { set_number: 1, weight: 70, reps: 10, rpe: 6 },
+      { set_number: 2, weight: 70, reps: 10, rpe: 6 },
+      { set_number: 3, weight: 70, reps: 10, rpe: 7 },
+    ], notes: null },
   ],
   "exd-3": [
-    { date: daysAgo(2), weight: 24, reps: 10, rpe: 8, notes: "Left side weaker" },
-    { date: daysAgo(9), weight: 22, reps: 10, rpe: 7, notes: null },
-    { date: daysAgo(16), weight: 20, reps: 10, rpe: 7, notes: null },
+    { date: daysAgo(2), sets: [
+      { set_number: 1, weight: 24, reps: 10, rpe: 8 },
+      { set_number: 2, weight: 24, reps: 10, rpe: 8 },
+      { set_number: 3, weight: 22, reps: 10, rpe: 8 },
+    ], notes: "Left side weaker" },
+    { date: daysAgo(9), sets: [
+      { set_number: 1, weight: 22, reps: 10, rpe: 7 },
+      { set_number: 2, weight: 22, reps: 10, rpe: 7 },
+      { set_number: 3, weight: 22, reps: 10, rpe: 7 },
+    ], notes: null },
+    { date: daysAgo(16), sets: [
+      { set_number: 1, weight: 20, reps: 10, rpe: 7 },
+      { set_number: 2, weight: 20, reps: 10, rpe: 7 },
+      { set_number: 3, weight: 20, reps: 10, rpe: 7 },
+    ], notes: null },
   ],
   "exd-4": [
-    { date: daysAgo(2), weight: 180, reps: 12, rpe: 7, notes: null },
-    { date: daysAgo(9), weight: 170, reps: 12, rpe: 7, notes: "Bumped weight" },
-    { date: daysAgo(16), weight: 160, reps: 12, rpe: 6, notes: null },
+    { date: daysAgo(2), sets: [
+      { set_number: 1, weight: 180, reps: 12, rpe: 7 },
+      { set_number: 2, weight: 180, reps: 12, rpe: 7 },
+      { set_number: 3, weight: 180, reps: 11, rpe: 8 },
+      { set_number: 4, weight: 175, reps: 12, rpe: 8 },
+    ], notes: null },
+    { date: daysAgo(9), sets: [
+      { set_number: 1, weight: 170, reps: 12, rpe: 7 },
+      { set_number: 2, weight: 170, reps: 12, rpe: 7 },
+      { set_number: 3, weight: 170, reps: 11, rpe: 7 },
+      { set_number: 4, weight: 170, reps: 10, rpe: 8 },
+    ], notes: "Bumped weight" },
+    { date: daysAgo(16), sets: [
+      { set_number: 1, weight: 160, reps: 12, rpe: 6 },
+      { set_number: 2, weight: 160, reps: 12, rpe: 6 },
+      { set_number: 3, weight: 160, reps: 12, rpe: 7 },
+      { set_number: 4, weight: 160, reps: 12, rpe: 7 },
+    ], notes: null },
   ],
   "exd-5": [
-    { date: daysAgo(2), weight: 40, reps: 18, rpe: 6, notes: null },
-    { date: daysAgo(9), weight: 35, reps: 20, rpe: 6, notes: null },
-    { date: daysAgo(16), weight: 35, reps: 15, rpe: 5, notes: null },
+    { date: daysAgo(2), sets: [
+      { set_number: 1, weight: 40, reps: 18, rpe: 6 },
+      { set_number: 2, weight: 40, reps: 15, rpe: 7 },
+      { set_number: 3, weight: 35, reps: 20, rpe: 6 },
+    ], notes: null },
+    { date: daysAgo(9), sets: [
+      { set_number: 1, weight: 35, reps: 20, rpe: 6 },
+      { set_number: 2, weight: 35, reps: 18, rpe: 6 },
+      { set_number: 3, weight: 35, reps: 15, rpe: 7 },
+    ], notes: null },
+    { date: daysAgo(16), sets: [
+      { set_number: 1, weight: 35, reps: 15, rpe: 5 },
+      { set_number: 2, weight: 30, reps: 18, rpe: 5 },
+      { set_number: 3, weight: 30, reps: 15, rpe: 6 },
+    ], notes: null },
   ],
 };
 
@@ -308,6 +388,13 @@ export const DEMO_ADMIN_LOGS = [
   { id: "al-3", completed: true, session_rpe: 9, notes: "Shoulder felt tight on last set", created_at: new Date().toISOString(), profile_name: "Sam Chen", workout_date: daysAgo(2), training_type: "upper_body" },
   { id: "al-4", completed: false, session_rpe: null, notes: null, created_at: new Date().toISOString(), profile_name: "Morgan Blake", workout_date: daysAgo(2), training_type: "upper_body" },
 ];
+
+// ─── Mutable history for demo ────────────────────────────────
+export function addDemoHistoryEntry(entry: typeof DEMO_MEMBER_HISTORY[number], detail: HistoryWorkoutDetail) {
+  DEMO_MEMBER_HISTORY.unshift(entry);
+  DEMO_HISTORY_DETAILS[entry.id] = detail;
+  notifyHistoryUpdate();
+}
 
 // ─── Context ─────────────────────────────────────────────────
 interface DemoContextValue {

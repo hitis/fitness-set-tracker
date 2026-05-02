@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ArrowLeft, ChevronRight, AlertTriangle, Check } from "lucide-react";
-import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, type HistoryWorkoutDetail } from "@/hooks/use-demo";
+import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail } from "@/hooks/use-demo";
 
 function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
   return (
@@ -78,6 +78,11 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
 
 export function DemoWorkoutHistory() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    return onHistoryUpdate(() => forceUpdate((n) => n + 1));
+  }, []);
 
   if (selectedId) {
     const detail = DEMO_HISTORY_DETAILS[selectedId];

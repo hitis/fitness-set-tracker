@@ -5,12 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Check } from "lucide-react";
 import type { DemoExercise, BlockType } from "@/hooks/use-demo";
 
-interface PreviousPerformance {
-  weight: number;
-  reps: number;
-  rpe: number;
-  notes: string | null;
-}
+import type { PreviousEntry } from "@/hooks/use-demo";
 
 export function DemoConditioningLogger({
   exercise,
@@ -21,7 +16,7 @@ export function DemoConditioningLogger({
 }: {
   exercise: DemoExercise;
   blockType: BlockType;
-  previous: PreviousPerformance | null;
+  previous: PreviousEntry | null;
   onBack: () => void;
   onComplete: () => void;
 }) {
@@ -31,8 +26,16 @@ export function DemoConditioningLogger({
   const [rpe, setRpe] = useState("");
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
+  const [completed, setCompleted] = useState(true);
+  const [rpeError, setRpeError] = useState("");
 
   const handleSave = () => {
+    const rpeNum = rpe ? parseInt(rpe) : null;
+    if (rpeNum !== null && (rpeNum < 1 || rpeNum > 10)) {
+      setRpeError("RPE must be between 1 and 10");
+      return;
+    }
+    setRpeError("");
     setDone(true);
     setTimeout(() => onComplete(), 400);
   };
@@ -63,14 +66,36 @@ export function DemoConditioningLogger({
         <div className="rounded-lg bg-primary/10 p-3">
           <p className="text-xs font-medium text-primary mb-1">Last time</p>
           <p className="text-sm text-foreground">
-            {previous.weight && `${previous.weight}kg`}
-            {previous.reps && ` · ${previous.reps} reps`}
-            {previous.rpe && ` · RPE ${previous.rpe}`}
+            {previous.sets.length > 0 && (
+              <>
+                {previous.sets[0].weight > 0 && `${previous.sets[0].weight}kg · `}
+                {previous.sets[0].reps} reps · RPE {previous.sets[0].rpe}
+              </>
+            )}
           </p>
         </div>
       )}
 
       <div className="rounded-xl bg-card p-4 space-y-4">
+        {/* Completed toggle */}
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Completed</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCompleted(true)}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${completed ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => setCompleted(false)}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition-colors ${!completed ? "bg-destructive/20 text-destructive" : "bg-secondary text-muted-foreground"}`}
+            >
+              No
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           {showRounds && (
             <div>
@@ -86,7 +111,7 @@ export function DemoConditioningLogger({
             </div>
           )}
           <div>
-            <label className="text-xs text-muted-foreground">Weight (kg)</label>
+            <label className="text-xs text-muted-foreground">Weight (kg, optional)</label>
             <Input
               type="number"
               inputMode="decimal"
@@ -97,19 +122,23 @@ export function DemoConditioningLogger({
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">RPE</label>
+            <label className="text-xs text-muted-foreground">RPE (1-10)</label>
             <Input
               type="number"
               inputMode="numeric"
               min="1"
               max="10"
               value={rpe}
-              onChange={(e) => setRpe(e.target.value)}
+              onChange={(e) => { setRpe(e.target.value); setRpeError(""); }}
               className="h-14 bg-secondary text-center text-xl font-bold"
               placeholder="—"
             />
           </div>
         </div>
+
+        {rpeError && (
+          <p className="text-xs text-destructive font-medium">{rpeError}</p>
+        )}
 
         {!showNotes ? (
           <button
