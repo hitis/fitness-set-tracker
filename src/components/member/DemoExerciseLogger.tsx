@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X } from "lucide-react";
 import { format } from "date-fns";
 import type { DemoExercise, PreviousEntry } from "@/hooks/use-demo";
 
@@ -16,10 +15,40 @@ interface SetLog {
   pain_area: string;
   showNotes: boolean;
   saved: boolean;
-  warnings: string[];
+  errors: string[];
+  deviationWarnings: string[];
 }
 
 const PAIN_AREAS = ["wrist", "shoulder", "back", "knee", "ankle", "other"];
+
+function sanitizeDecimal(val: string): string {
+  let result = "";
+  let hasDot = false;
+  for (const ch of val) {
+    if (ch >= "0" && ch <= "9") result += ch;
+    else if (ch === "." && !hasDot) { result += ch; hasDot = true; }
+  }
+  return result;
+}
+
+function sanitizeInteger(val: string): string {
+  return val.replace(/[^0-9]/g, "");
+}
+
+function NumInput({ value, onChange, placeholder, mode }: {
+  value: string; onChange: (v: string) => void; placeholder: string; mode: "decimal" | "integer";
+}) {
+  return (
+    <input
+      type="text"
+      inputMode={mode === "decimal" ? "decimal" : "numeric"}
+      value={value}
+      onChange={(e) => onChange(mode === "decimal" ? sanitizeDecimal(e.target.value) : sanitizeInteger(e.target.value))}
+      className="flex h-14 w-full rounded-md border-0 bg-secondary px-3 py-1 text-center text-xl font-bold text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      placeholder={placeholder}
+    />
+  );
+}
 
 function getLastSessionAvgWeight(history: PreviousEntry[]): number | null {
   if (!history.length || !history[0].sets.length) return null;
@@ -51,7 +80,8 @@ export function DemoExerciseLogger({
       pain_area: "",
       showNotes: false,
       saved: false,
-      warnings: [],
+      errors: [],
+      deviationWarnings: [],
     }))
   );
   const [showFullHistory, setShowFullHistory] = useState(false);
@@ -62,7 +92,7 @@ export function DemoExerciseLogger({
   const updateSet = (setNum: number, field: keyof SetLog, value: string | boolean) => {
     setSets((prev) =>
       prev.map((s) =>
-        s.set_number === setNum ? { ...s, [field]: value, saved: false, warnings: [] } : s
+        s.set_number === setNum ? { ...s, [field]: value, saved: false, errors: [], deviationWarnings: [] } : s
       )
     );
   };
@@ -72,36 +102,41 @@ export function DemoExerciseLogger({
       const current = prev.find((s) => s.set_number === setNum);
       if (!current) return prev;
 
-      // Validate RPE
-      const rpeNum = current.rpe ? parseInt(current.rpe) : null;
-      if (rpeNum !== null && (rpeNum < 1 || rpeNum > 10)) {
-        return prev.map((s) =>
-          s.set_number === setNum ? { ...s, warnings: ["RPE must be between 1 and 10"] } : s
-        );
+      // Full validation
+      const errors: string[] = [];
+      const w = current.weight ? parseFloat(current.weight) : null;
+      const r = current.reps ? parseInt(current.reps) : null;
+      const rpe = current.rpe ? parseInt(current.rpe) : null;
+
+      if (!current.weight && !current.reps) errors.push("Enter weight and reps to save");
+      if (current.weight && (w === null || w <= 0)) errors.push("Weight must be a positive number");
+      if (current.reps && (r === null || r <= 0)) errors.push("Reps must be greater than 0");
+      if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be between 1 and 10");
+
+      if (errors.length > 0) {
+        return prev.map((s) => s.set_number === setNum ? { ...s, errors, deviationWarnings: [] } : s);
       }
 
-      // Weight deviation warnings
-      const w = current.weight ? parseFloat(current.weight) : null;
-      const warnings: string[] = [];
-      if (w !== null && w > 0 && !dismissedWarnings.has(setNum)) {
+      // Deviation warnings
+      const deviationWarnings: string[] = [];
+      if (w && w > 0 && !dismissedWarnings.has(setNum)) {
         const prevSet = prev.find((s) => s.set_number === setNum - 1 && s.saved);
         if (prevSet?.weight) {
           const pv = parseFloat(prevSet.weight);
           if (pv > 0 && Math.abs(w - pv) / pv > 0.3) {
-            warnings.push(`Large weight change vs previous set (${pv}kg → ${w}kg)`);
+            deviationWarnings.push(`Large weight change vs previous set (${pv}kg → ${w}kg)`);
           }
         }
         if (lastSessionAvg !== null && lastSessionAvg > 0 && Math.abs(w - lastSessionAvg) / lastSessionAvg > 0.3) {
-          warnings.push(`Weight is ${w > lastSessionAvg ? "significantly higher" : "significantly lower"} than last session avg (${Math.round(lastSessionAvg)}kg)`);
+          deviationWarnings.push(`Weight is ${w > lastSessionAvg ? "significantly higher" : "significantly lower"} than last session avg (${Math.round(lastSessionAvg)}kg)`);
+        }
+        if (deviationWarnings.length > 0) {
+          return prev.map((s) => s.set_number === setNum ? { ...s, errors: [], deviationWarnings } : s);
         }
       }
 
-      if (warnings.length > 0) {
-        return prev.map((s) => (s.set_number === setNum ? { ...s, warnings } : s));
-      }
-
       const updated = prev.map((s) =>
-        s.set_number === setNum ? { ...s, saved: true, warnings: [] } : s
+        s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
       return updated;
@@ -125,7 +160,7 @@ export function DemoExerciseLogger({
       if (!prevSet) return prev;
       return prev.map((s) =>
         s.set_number === setNum
-          ? { ...s, weight: prevSet.weight, reps: prevSet.reps, rpe: prevSet.rpe, saved: false, warnings: [] }
+          ? { ...s, weight: prevSet.weight, reps: prevSet.reps, rpe: prevSet.rpe, saved: false, errors: [], deviationWarnings: [] }
           : s
       );
     });
@@ -229,37 +264,29 @@ export function DemoExerciseLogger({
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
-                <Input
-                  type="number"
-                  inputMode="decimal"
+                <NumInput
                   value={set.weight}
-                  onChange={(e) => updateSet(set.set_number, "weight", e.target.value)}
-                  className="h-14 bg-secondary border-0 text-center text-xl font-bold"
+                  onChange={(v) => updateSet(set.set_number, "weight", v)}
                   placeholder="—"
+                  mode="decimal"
                 />
               </div>
               <div>
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reps</label>
-                <Input
-                  type="number"
-                  inputMode="numeric"
+                <NumInput
                   value={set.reps}
-                  onChange={(e) => updateSet(set.set_number, "reps", e.target.value)}
-                  className="h-14 bg-secondary border-0 text-center text-xl font-bold"
+                  onChange={(v) => updateSet(set.set_number, "reps", v)}
                   placeholder="—"
+                  mode="integer"
                 />
               </div>
               <div>
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">RPE (1-10)</label>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  max="10"
+                <NumInput
                   value={set.rpe}
-                  onChange={(e) => updateSet(set.set_number, "rpe", e.target.value)}
-                  className="h-14 bg-secondary border-0 text-center text-xl font-bold"
+                  onChange={(v) => updateSet(set.set_number, "rpe", v)}
                   placeholder="—"
+                  mode="integer"
                 />
               </div>
             </div>
@@ -284,7 +311,7 @@ export function DemoExerciseLogger({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Pain / Discomfort
               </button>
-              {!set.saved && (set.weight || set.reps) && set.warnings.length === 0 && (
+              {!set.saved && (set.weight || set.reps) && set.errors.length === 0 && set.deviationWarnings.length === 0 && (
                 <button
                   onClick={() => saveSet(set.set_number)}
                   className="ml-auto rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition-colors"
@@ -294,38 +321,41 @@ export function DemoExerciseLogger({
               )}
             </div>
 
-            {/* Warnings */}
-            {set.warnings.length > 0 && (
-              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 space-y-2">
-                {set.warnings.map((w, wi) => (
-                  <div key={wi} className="flex items-start gap-2">
-                    <Info className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                    <p className="text-xs text-destructive">{w}</p>
-                  </div>
+            {/* Validation Errors */}
+            {set.errors.length > 0 && (
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 space-y-1">
+                {set.errors.map((err, ei) => (
+                  <p key={ei} className="flex items-start gap-2 text-xs text-destructive">
+                    <X className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    {err}
+                  </p>
                 ))}
-                {!set.warnings.some((w) => w.startsWith("RPE")) ? (
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => confirmAndSave(set.set_number)}
-                      className="rounded-md bg-primary px-3 py-1 text-xs font-bold text-primary-foreground"
-                    >
-                      Confirm & Save
-                    </button>
-                    <button
-                      onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, warnings: [] } : s))}
-                      className="rounded-md bg-secondary px-3 py-1 text-xs text-muted-foreground"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                ) : (
+              </div>
+            )}
+
+            {/* Deviation Warnings */}
+            {set.deviationWarnings.length > 0 && (
+              <div className="rounded-lg bg-amber-900/20 border border-amber-500/30 p-3 space-y-2">
+                {set.deviationWarnings.map((w, wi) => (
+                  <p key={wi} className="flex items-start gap-2 text-xs text-amber-400">
+                    <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    {w}
+                  </p>
+                ))}
+                <div className="flex gap-2 pt-1">
                   <button
-                    onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, warnings: [] } : s))}
+                    onClick={() => confirmAndSave(set.set_number)}
+                    className="rounded-md bg-primary px-3 py-1 text-xs font-bold text-primary-foreground"
+                  >
+                    Confirm & Save
+                  </button>
+                  <button
+                    onClick={() => setSets((p) => p.map((s) => s.set_number === set.set_number ? { ...s, deviationWarnings: [] } : s))}
                     className="rounded-md bg-secondary px-3 py-1 text-xs text-muted-foreground"
                   >
-                    Fix value
+                    Edit
                   </button>
-                )}
+                </div>
               </div>
             )}
 
