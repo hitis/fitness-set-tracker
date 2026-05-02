@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/use-auth";
-import { AuthForm } from "@/components/AuthForm";
 import { AppShell } from "@/components/AppShell";
-import { AdminLogs } from "@/components/admin/AdminLogs";
+import { DemoProvider, useDemo } from "@/hooks/use-demo";
+import { DemoAdminLogs } from "@/components/admin/DemoAdminLogs";
 
 export const Route = createFileRoute("/admin/logs")({
   head: () => ({
@@ -15,28 +14,18 @@ export const Route = createFileRoute("/admin/logs")({
 });
 
 function AdminLogsPage() {
-  const { user, role, loading, signOut } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!user || !role) return <AuthForm />;
-  if (role !== "admin") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground">Access denied</p>
-      </div>
-    );
-  }
-
   return (
-    <AppShell role={role} onSignOut={signOut}>
-      <AdminLogs />
+    <DemoProvider>
+      <DemoAdminLogsInner />
+    </DemoProvider>
+  );
+}
+
+function DemoAdminLogsInner() {
+  const demo = useDemo();
+  return (
+    <AppShell role={demo.role} onSignOut={() => {}}>
+      <DemoAdminLogs />
     </AppShell>
   );
 }

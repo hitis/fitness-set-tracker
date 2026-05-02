@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Dumbbell, ClipboardList, History, LogOut, Settings } from "lucide-react";
 import type { AppRole } from "@/hooks/use-auth";
+import { useDemo } from "@/hooks/use-demo";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -10,7 +11,8 @@ interface AppShellProps {
 
 export function AppShell({ children, role, onSignOut }: AppShellProps) {
   const location = useLocation();
-  const isAdmin = role === "admin";
+  const demo = useDemo();
+  const isAdmin = demo.isDemoMode ? demo.role === "admin" : role === "admin";
 
   const navItems = isAdmin
     ? [
@@ -35,10 +37,40 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
               </span>
             )}
           </div>
-          <button onClick={onSignOut} className="p-2 text-muted-foreground hover:text-foreground">
-            <LogOut className="h-5 w-5" />
-          </button>
+          {!demo.isDemoMode && (
+            <button onClick={onSignOut} className="p-2 text-muted-foreground hover:text-foreground">
+              <LogOut className="h-5 w-5" />
+            </button>
+          )}
         </div>
+
+        {demo.isDemoMode && (
+          <div className="border-t border-border px-4 py-2 flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-primary">Demo data active</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => demo.setRole("member")}
+                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  demo.role === "member"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                Member
+              </button>
+              <button
+                onClick={() => demo.setRole("admin")}
+                className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  demo.role === "admin"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                Admin
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 pb-20">{children}</main>

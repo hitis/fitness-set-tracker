@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
-import { AuthForm } from "@/components/AuthForm";
 import { AppShell } from "@/components/AppShell";
 import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
 import { TodayWorkout } from "@/components/member/TodayWorkout";
+import { DemoProvider, useDemo } from "@/hooks/use-demo";
+import { DemoAdminWorkouts } from "@/components/admin/DemoAdminWorkouts";
+import { DemoTodayWorkout } from "@/components/member/DemoTodayWorkout";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -20,19 +22,34 @@ function Index() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
+      <DemoProvider>
+        <DemoIndex />
+      </DemoProvider>
     );
   }
 
   if (!user || !role) {
-    return <AuthForm />;
+    return (
+      <DemoProvider>
+        <DemoIndex />
+      </DemoProvider>
+    );
   }
 
   return (
-    <AppShell role={role} onSignOut={signOut}>
-      {role === "admin" ? <AdminWorkouts /> : <TodayWorkout user={user} />}
+    <DemoProvider forceDemo={false}>
+      <AppShell role={role} onSignOut={signOut}>
+        {role === "admin" ? <AdminWorkouts /> : <TodayWorkout user={user} />}
+      </AppShell>
+    </DemoProvider>
+  );
+}
+
+function DemoIndex() {
+  const demo = useDemo();
+  return (
+    <AppShell role={demo.role} onSignOut={() => {}}>
+      {demo.role === "admin" ? <DemoAdminWorkouts /> : <DemoTodayWorkout />}
     </AppShell>
   );
 }
