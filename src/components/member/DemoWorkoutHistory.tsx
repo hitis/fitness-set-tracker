@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X } from "lucide-react";
-import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail } from "@/hooks/use-demo";
+import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star } from "lucide-react";
+import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryExerciseDetail } from "@/hooks/use-demo";
 
 function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
   return (
@@ -80,10 +80,90 @@ export function DemoWorkoutHistory() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [exerciseView, setExerciseView] = useState<{ name: string } | null>(null);
 
   useEffect(() => {
     return onHistoryUpdate(() => forceUpdate((n) => n + 1));
   }, []);
+
+  // All unique exercise names for suggestions
+  const allExerciseNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const detail of Object.values(DEMO_HISTORY_DETAILS)) {
+      for (const ex of detail.exercises) names.add(ex.exercise_name);
+    }
+    return Array.from(names).sort();
+  }, []);
+
+  // Filtered suggestions based on search
+  const suggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return allExerciseNames.filter((n) =>
+      n.toLowerCase().includes(searchQuery.toLowerCase())
+    ).slice(0, 5);
+  }, [searchQuery, allExerciseNames]);
+
+  // Exercise history drill-down
+  if (exerciseView) {
+    const sessions: { date: string; detail: HistoryWorkoutDetail; exercise: HistoryExerciseDetail; historyId: string }[] = [];
+    for (const h of DEMO_MEMBER_HISTORY) {
+      const detail = DEMO_HISTORY_DETAILS[h.id];
+      if (!detail) continue;
+      for (const ex of detail.exercises) {
+        if (ex.exercise_name === exerciseView.name) {
+          sessions.push({ date: h.workout_date, detail, exercise: ex, historyId: h.id });
+        }
+      }
+    }
+
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setExerciseView(null)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-card text-muted-foreground active:scale-95 transition-transform">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-lg font-bold text-foreground">{exerciseView.name}</h2>
+        </div>
+        {sessions.length === 0 ? (
+          <p className="py-12 text-center text-muted-foreground">No history for this exercise.</p>
+        ) : (
+          <div className="space-y-3">
+            {sessions.map((s, i) => (
+              <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {format(new Date(s.date + "T00:00:00"), "EEE, MMM d")}
+                    </p>
+                    <p className="text-xs text-muted-foreground capitalize">{s.detail.training_type.replace("_", " ")} · {s.detail.phase}</p>
+                  </div>
+                  <button
+                    onClick={() => { setExerciseView(null); setSelectedId(s.historyId); }}
+                    className="text-xs font-medium text-primary px-3 py-2 rounded-lg bg-primary/10 active:scale-95"
+                  >
+                    View workout
+                  </button>
+                </div>
+                <div className="divide-y divide-border">
+                  {s.exercise.sets.map((set) => (
+                    <div key={set.set_number} className="flex items-center gap-3 px-4 py-3">
+                      <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
+                      <span className="text-sm font-semibold text-foreground min-w-[60px]">
+                        {set.weight > 0 ? `${set.weight}kg` : "BW"}
+                      </span>
+                      <span className="text-sm text-foreground">× {set.reps}</span>
+                      <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
+                      {set.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (selectedId) {
     const detail = DEMO_HISTORY_DETAILS[selectedId];
@@ -109,19 +189,34 @@ export function DemoWorkoutHistory() {
 
       {/* Search */}
       {DEMO_MEMBER_HISTORY.length > 0 && (
-        <div className="relative">
+        <div className="relative" role="search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by exercise name..."
-            className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Search exercises (e.g. squat, press)"
+            className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1">
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
+          )}
+          {/* Suggestions dropdown */}
+          {searchQuery.trim() && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-xl border border-border bg-card shadow-lg overflow-hidden">
+              {suggestions.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => { setSearchQuery(""); setExerciseView({ name }); }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-foreground hover:bg-secondary transition-colors active:bg-secondary/80"
+                >
+                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {name}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -136,15 +231,20 @@ export function DemoWorkoutHistory() {
             <button
               key={h.id}
               onClick={() => setSelectedId(h.id)}
-              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all active:scale-[0.98]"
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all active:scale-[0.98] min-h-[72px]"
             >
               <div className="flex-1 space-y-1">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-foreground">
                     {format(new Date(h.workout_date + "T00:00:00"), "EEE, MMM d")}
                   </p>
-                  {h.completed && (
-                    <Badge className="bg-primary/20 text-primary border-0 text-[10px]">Done</Badge>
+                  {h.completed ? (
+                    <Badge className="bg-primary/20 text-primary border-0 text-[10px]">
+                      <Check className="h-3 w-3 mr-0.5" />
+                      Done
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">In progress</Badge>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -157,7 +257,11 @@ export function DemoWorkoutHistory() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {h.exercise_count} sets logged
-                  {h.session_rpe != null && ` · RPE ${h.session_rpe}/10`}
+                  {h.session_rpe != null && (
+                    <span className="inline-flex items-center gap-0.5 ml-1">
+                      · <Star className="h-3 w-3 inline text-primary" /> {h.session_rpe}/10
+                    </span>
+                  )}
                 </p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
