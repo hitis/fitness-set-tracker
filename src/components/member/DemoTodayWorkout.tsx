@@ -4,22 +4,63 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
-import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, type DemoBlock, type DemoExercise, type BlockType } from "@/hooks/use-demo";
+import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, type DemoBlock, type DemoExercise, type BlockType, type PreviousEntry } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft } from "lucide-react";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
 export function DemoTodayWorkout() {
   const workout = DEMO_TODAY_WORKOUT;
   const [selectedExercise, setSelectedExercise] = useState<{ exercise: DemoExercise; block: DemoBlock } | null>(null);
+  const [exerciseHistoryView, setExerciseHistoryView] = useState<{ exercise: DemoExercise; history: PreviousEntry[] } | null>(null);
   const [completed, setCompleted] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
   const [sessionRpe, setSessionRpe] = useState("");
   const [sessionNotes, setSessionNotes] = useState("");
   const [loggedSets, setLoggedSets] = useState<Record<string, number>>({});
   const [completedCondExercises, setCompletedCondExercises] = useState<Set<string>>(new Set());
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
+  const [rpeError, setRpeError] = useState("");
+
+  // Exercise-wise full history view
+  if (exerciseHistoryView) {
+    const { exercise, history } = exerciseHistoryView;
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setExerciseHistoryView(null)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-lg font-bold text-foreground">{exercise.exercise_name} — History</h2>
+        </div>
+        {history.length === 0 ? (
+          <p className="py-12 text-center text-muted-foreground">No history yet for this exercise.</p>
+        ) : (
+          <div className="space-y-3">
+            {history.map((entry, i) => (
+              <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                <p className="text-sm font-semibold text-foreground">
+                  {format(new Date(entry.date + "T00:00:00"), "EEEE, MMM d")}
+                </p>
+                <div className="space-y-1">
+                  {entry.sets.map((s) => (
+                    <div key={s.set_number} className="flex items-center gap-2 text-sm">
+                      <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
+                      <span className="font-semibold text-foreground">{s.weight > 0 ? `${s.weight}kg` : "BW"} × {s.reps}</span>
+                      <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
+                    </div>
+                  ))}
+                </div>
+                {entry.notes && <p className="text-xs text-muted-foreground italic">{entry.notes}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (selectedExercise) {
     const isConditioning = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
@@ -29,7 +70,7 @@ export function DemoTodayWorkout() {
         <DemoConditioningLogger
           exercise={selectedExercise.exercise}
           blockType={selectedExercise.block.block_type}
-          previous={history[0] || null}
+          previous={history.length > 0 ? history[0] : null}
           onBack={() => setSelectedExercise(null)}
           onComplete={() => {
             setCompletedCondExercises((prev) => new Set(prev).add(selectedExercise.exercise.exercise_id));
@@ -45,6 +86,10 @@ export function DemoTodayWorkout() {
         onBack={() => setSelectedExercise(null)}
         onSaveSets={(count) => {
           setLoggedSets((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: count }));
+        }}
+        onViewExerciseHistory={() => {
+          setSelectedExercise(null);
+          setExerciseHistoryView({ exercise: selectedExercise.exercise, history });
         }}
       />
     );
@@ -73,9 +118,88 @@ export function DemoTodayWorkout() {
   }
 
   if (showFinish) {
+    // Check completeness
+    const allExercises = workout.blocks.flatMap((b) => b.exercises);
+    const incompleteExercises = allExercises.filter((ex) => {
+      const isConditioning = CONDITIONING_TYPES.includes(
+        workout.blocks.find((b) => b.exercises.some((e) => e.id === ex.id))?.block_type || "accessory"
+      );
+      if (isConditioning) return !completedCondExercises.has(ex.exercise_id);
+      return (loggedSets[ex.exercise_id] || 0) === 0;
+    });
+
+    const handleSubmit = () => {
+      const rpeNum = sessionRpe ? parseInt(sessionRpe) : null;
+      if (rpeNum !== null && (rpeNum < 1 || rpeNum > 10)) {
+        setRpeError("RPE must be between 1 and 10");
+        return;
+      }
+      setRpeError("");
+
+      if (incompleteExercises.length > 0 && !showIncompleteWarning) {
+        setShowIncompleteWarning(true);
+        return;
+      }
+
+      // Add to history immediately
+      const totalSets = Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size;
+      const entryId = `s-new-${Date.now()}`;
+      addDemoHistoryEntry(
+        {
+          id: entryId,
+          workout_date: workout.workout_date,
+          training_type: workout.training_type,
+          phase: workout.phase,
+          session_rpe: rpeNum,
+          completed: true,
+          exercise_count: totalSets,
+        },
+        {
+          workout_date: workout.workout_date,
+          training_type: workout.training_type,
+          phase: workout.phase,
+          session_rpe: rpeNum,
+          notes: sessionNotes || null,
+          completed: true,
+          exercises: allExercises.map((ex) => ({
+            exercise_name: ex.exercise_name,
+            prescribed_sets: ex.prescribed_sets,
+            prescribed_reps: ex.prescribed_reps,
+            sets: Array.from({ length: loggedSets[ex.exercise_id] || 0 }, (_, i) => ({
+              set_number: i + 1,
+              weight: 0,
+              reps: 0,
+              rpe: 0,
+              notes: null,
+              pain_flag: false,
+              pain_area: null,
+            })),
+          })),
+        }
+      );
+
+      setCompleted(true);
+    };
+
     return (
       <div className="p-4 space-y-6">
         <h2 className="text-xl font-bold text-foreground">Finish Workout</h2>
+
+        {incompleteExercises.length > 0 && showIncompleteWarning && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <p className="text-sm font-semibold text-destructive">Some exercises are incomplete</p>
+            </div>
+            <ul className="space-y-1 pl-6">
+              {incompleteExercises.map((ex) => (
+                <li key={ex.id} className="text-xs text-destructive list-disc">{ex.exercise_name}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">Tap "Save & Complete" again to submit anyway.</p>
+          </div>
+        )}
+
         <div className="rounded-xl border border-border bg-card p-4 space-y-4">
           <div>
             <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Session RPE (1-10)</label>
@@ -85,10 +209,11 @@ export function DemoTodayWorkout() {
               min="1"
               max="10"
               value={sessionRpe}
-              onChange={(e) => setSessionRpe(e.target.value)}
+              onChange={(e) => { setSessionRpe(e.target.value); setRpeError(""); }}
               className="mt-1 h-14 bg-secondary border-0 text-center text-2xl font-bold"
               placeholder="—"
             />
+            {rpeError && <p className="text-xs text-destructive mt-1">{rpeError}</p>}
           </div>
           <div>
             <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Notes (optional)</label>
@@ -101,7 +226,7 @@ export function DemoTodayWorkout() {
             />
           </div>
         </div>
-        <Button onClick={() => setCompleted(true)} className="h-14 w-full text-base font-bold" size="lg">
+        <Button onClick={handleSubmit} className="h-14 w-full text-base font-bold" size="lg">
           Save & Complete
         </Button>
         <Button variant="secondary" onClick={() => setShowFinish(false)} className="h-12 w-full text-base">
@@ -172,9 +297,10 @@ export function DemoTodayWorkout() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {ex.prescribed_sets} × {ex.prescribed_reps}
-                        </p>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <span>Sets: {ex.prescribed_sets}</span>
+                          <span>Reps: {ex.prescribed_reps}</span>
+                        </div>
                       </div>
                       {!isConditioning && logged > 0 && (
                         <span className="text-xs font-bold text-primary">
