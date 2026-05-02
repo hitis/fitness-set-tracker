@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
 import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
 import { TodayWorkout } from "@/components/member/TodayWorkout";
-import { DemoProvider, useDemo } from "@/hooks/use-demo";
+import { DemoProviderWithRole, useDemo } from "@/hooks/use-demo";
 import { DemoAdminWorkouts } from "@/components/admin/DemoAdminWorkouts";
 import { DemoTodayWorkout } from "@/components/member/DemoTodayWorkout";
 import { AuthForm } from "@/components/AuthForm";
@@ -30,20 +30,20 @@ function Index() {
   // If authenticated, show live app
   if (!loading && user && role) {
     return (
-      <DemoProvider forceDemo={false}>
+      <DemoProviderWithRole forceDemo={false} initialRole={role}>
         <AppShell role={role} onSignOut={signOut}>
           {role === "admin" ? <AdminWorkouts /> : <TodayWorkout user={user} />}
         </AppShell>
-      </DemoProvider>
+      </DemoProviderWithRole>
     );
   }
 
   // Demo mode
   if (mode === "demo") {
     return (
-      <DemoProvider forceDemo={true}>
-        <DemoIndexInner initialRole={demoRole} onExit={() => setMode("landing")} />
-      </DemoProvider>
+      <DemoProviderWithRole forceDemo={true} initialRole={demoRole}>
+        <DemoIndexInner onExit={() => setMode("landing")} />
+      </DemoProviderWithRole>
     );
   }
 
@@ -97,12 +97,8 @@ function Index() {
   );
 }
 
-function DemoIndexInner({ initialRole, onExit }: { initialRole: AppRole; onExit: () => void }) {
+function DemoIndexInner({ onExit }: { onExit: () => void }) {
   const demo = useDemo();
-  // Set initial role on mount
-  if (demo.role !== initialRole && !demo._roleSet) {
-    demo.setRole(initialRole);
-  }
   return (
     <AppShell role={demo.role} onSignOut={onExit}>
       {demo.role === "admin" ? <DemoAdminWorkouts /> : <DemoTodayWorkout />}
