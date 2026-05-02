@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
-import { DemoProviderWithRole, useDemo } from "@/hooks/use-demo";
+import { DemoProviderWithRole, DemoProviderAuto, useDemo } from "@/hooks/use-demo";
 import { DemoWorkoutHistory } from "@/components/member/DemoWorkoutHistory";
 import { WorkoutHistory } from "@/components/member/WorkoutHistory";
 
@@ -29,9 +29,9 @@ function HistoryPage() {
   }
 
   return (
-    <DemoProviderWithRole forceDemo={true} initialRole="member">
+    <DemoProviderAuto>
       <DemoHistoryInner />
-    </DemoProviderWithRole>
+    </DemoProviderAuto>
   );
 }
 

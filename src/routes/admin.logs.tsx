@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { DemoProvider, useDemo } from "@/hooks/use-demo";
+import { DemoProviderAuto, useDemo } from "@/hooks/use-demo";
 import { DemoAdminLogs } from "@/components/admin/DemoAdminLogs";
 
 export const Route = createFileRoute("/admin/logs")({
@@ -15,9 +15,9 @@ export const Route = createFileRoute("/admin/logs")({
 
 function AdminLogsPage() {
   return (
-    <DemoProvider>
+    <DemoProviderAuto>
       <DemoAdminLogsInner />
-    </DemoProvider>
+    </DemoProviderAuto>
   );
 }
 

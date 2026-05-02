@@ -4,8 +4,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
 import { AdminWorkouts } from "@/components/admin/AdminWorkouts";
 import { TodayWorkout } from "@/components/member/TodayWorkout";
-import { DemoProviderWithRole, useDemo } from "@/hooks/use-demo";
-import { DemoAdminWorkouts } from "@/components/admin/DemoAdminWorkouts";
+import { DemoProviderWithRole, useDemo, clearDemoMode } from "@/hooks/use-demo";
+import { DemoAdminDashboard } from "@/components/admin/DemoAdminDashboard";
 import { DemoTodayWorkout } from "@/components/member/DemoTodayWorkout";
 import { AuthForm } from "@/components/AuthForm";
 import { Dumbbell } from "lucide-react";
@@ -40,7 +40,7 @@ function Index() {
   if (mode === "demo") {
     return (
       <DemoProviderWithRole forceDemo={true} initialRole={demoRole}>
-        <DemoIndexInner onExit={() => setMode("landing")} />
+        <DemoIndexInner onExit={() => { clearDemoMode(); setMode("landing"); }} />
       </DemoProviderWithRole>
     );
   }
@@ -99,7 +99,7 @@ function DemoIndexInner({ onExit }: { onExit: () => void }) {
   const demo = useDemo();
   return (
     <AppShell role={demo.role} onSignOut={onExit}>
-      {demo.role === "admin" ? <DemoAdminWorkouts /> : <DemoTodayWorkout />}
+      {demo.role === "admin" ? <DemoAdminDashboard /> : <DemoTodayWorkout />}
     </AppShell>
   );
 }

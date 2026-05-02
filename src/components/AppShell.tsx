@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Dumbbell, ClipboardList, History, LogOut, User, LayoutDashboard } from "lucide-react";
+import { Dumbbell, History, LogOut, LayoutDashboard } from "lucide-react";
 import type { AppRole } from "@/hooks/use-auth";
 import { useDemo } from "@/hooks/use-demo";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +18,6 @@ export function AppShell({ children, role, onSignOut }: AppShellProps) {
 
   const adminNav = [
     { to: "/" as const, icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/admin/logs" as const, icon: ClipboardList, label: "Logs" },
   ];
 
   const memberNav = [
