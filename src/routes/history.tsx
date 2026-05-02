@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
-import { DemoProvider, useDemo } from "@/hooks/use-demo";
+import { DemoProviderWithRole, useDemo } from "@/hooks/use-demo";
 import { DemoWorkoutHistory } from "@/components/member/DemoWorkoutHistory";
+import { WorkoutHistory } from "@/components/member/WorkoutHistory";
 
 export const Route = createFileRoute("/history")({
   head: () => ({
@@ -14,10 +16,22 @@ export const Route = createFileRoute("/history")({
 });
 
 function HistoryPage() {
+  const { user, role, loading, signOut } = useAuth();
+
+  if (!loading && user && role) {
+    return (
+      <DemoProviderWithRole forceDemo={false} initialRole={role}>
+        <AppShell role={role} onSignOut={signOut}>
+          <WorkoutHistory user={user} />
+        </AppShell>
+      </DemoProviderWithRole>
+    );
+  }
+
   return (
-    <DemoProvider>
+    <DemoProviderWithRole forceDemo={true} initialRole="member">
       <DemoHistoryInner />
-    </DemoProvider>
+    </DemoProviderWithRole>
   );
 }
 
