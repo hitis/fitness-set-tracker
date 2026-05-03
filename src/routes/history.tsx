@@ -1,6 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AppShell } from "@/components/AppShell";
-import { Navigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
+import { AppShell } from "@/components/AppShell"; 
 import { useAppAuth } from "@/hooks/use-app-auth";
 import { DemoWorkoutHistory } from "@/components/member/DemoWorkoutHistory";
 
