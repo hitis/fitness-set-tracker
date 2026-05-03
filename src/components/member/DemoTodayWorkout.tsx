@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, type DemoBlock, type DemoExercise, type BlockType, type PreviousEntry } from "@/hooks/use-demo";
+import { DEMO_MEMBER_HISTORY } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Clock, Eye } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
@@ -168,6 +170,11 @@ export function DemoTodayWorkout() {
           <Pencil className="h-4 w-4 mr-2" />
           Edit Workout
         </Button>
+        <Link to="/history">
+          <Button variant="ghost" className="h-12 w-full max-w-xs text-primary">
+            View History
+          </Button>
+        </Link>
         <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={() => { setCompleted(false); setShowFinish(false); setShowSavedSummary(false); }}>
           Back to Today
         </Button>
@@ -373,7 +380,7 @@ export function DemoTodayWorkout() {
   return (
     <div className="p-4 space-y-5">
       {/* Workout Header */}
-      <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-card to-card/80 p-4 space-y-2">
+      <div className={`rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 ${completed ? "border-primary/30" : "border-primary/20"}`}>
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
         </p>
@@ -384,14 +391,53 @@ export function DemoTodayWorkout() {
           <Badge className="bg-primary/20 text-primary border-0 text-xs font-semibold">
             {workout.phase}
           </Badge>
+          {completed && (
+            <Badge className="bg-primary/20 text-primary border-0 text-xs font-semibold">
+              <Check className="h-3 w-3 mr-1" />
+              Completed
+            </Badge>
+          )}
         </div>
         {workout.notes && (
           <p className="text-sm text-muted-foreground italic">{workout.notes}</p>
         )}
       </div>
 
+      {/* Already completed state */}
+      {completed && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20">
+              <Check className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Today's workout saved</p>
+              <p className="text-xs text-muted-foreground">
+                {Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size} sets logged
+                {sessionRpe && ` · RPE ${sessionRpe}/10`}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Button onClick={() => setShowSavedSummary(true)} className="h-12 w-full text-base">
+              <Eye className="h-4 w-4 mr-2" />
+              View Saved Workout
+            </Button>
+            <Button variant="outline" onClick={() => setIsEditing(true)} className="h-12 w-full text-base">
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Workout
+            </Button>
+            <Link to="/history" className="block">
+              <Button variant="secondary" className="h-12 w-full text-base">
+                View History
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Blocks */}
-      <div className="space-y-6">
+      {!completed && <div className="space-y-6">
         {workout.blocks.map((block) => {
           const isConditioning = CONDITIONING_TYPES.includes(block.block_type);
           return (
