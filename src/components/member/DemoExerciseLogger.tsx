@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X, Pencil } from "lucide-react";
@@ -12,7 +12,7 @@ interface SetLog {
   rpe: string;
   notes: string;
   pain_flag: boolean;
-  pain_area: string;
+  pain_areas: string[];
   showNotes: boolean;
   saved: boolean;
   errors: string[];
@@ -42,7 +42,7 @@ function validateField(field: "weight" | "reps" | "rpe", value: string): string 
   return undefined;
 }
 
-const PAIN_AREAS = ["wrist", "shoulder", "back", "knee", "ankle", "other"];
+const PAIN_AREAS = ["wrist", "hand", "shoulder", "elbow", "lower back", "hip", "knee", "ankle", "other"];
 
 function sanitizeDecimal(val: string): string {
   let result = "";
@@ -92,12 +92,14 @@ export function DemoExerciseLogger({
   onBack,
   onSaveSets,
   onViewExerciseHistory,
+  onSetDataChange,
 }: {
   exercise: DemoExercise;
   previousHistory: PreviousEntry[];
   onBack: () => void;
   onSaveSets: (count: number) => void;
   onViewExerciseHistory?: () => void;
+  onSetDataChange?: (sets: Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>) => void;
 }) {
   const [sets, setSets] = useState<SetLog[]>(() =>
     Array.from({ length: exercise.prescribed_sets }, (_, i) => ({
@@ -107,7 +109,7 @@ export function DemoExerciseLogger({
       rpe: "",
       notes: "",
       pain_flag: false,
-      pain_area: "",
+      pain_areas: [],
       showNotes: false,
       saved: false,
       errors: [],
@@ -119,6 +121,22 @@ export function DemoExerciseLogger({
   const [editingSet, setEditingSet] = useState<number | null>(null);
 
   const lastSessionAvg = getLastSessionAvgWeight(previousHistory);
+
+  // Notify parent of set data changes
+  const notifySetDataChange = useCallback((updatedSets: SetLog[]) => {
+    if (onSetDataChange) {
+      const saved = updatedSets.filter(s => s.saved);
+      onSetDataChange(saved.map(s => ({
+        set_number: s.set_number,
+        weight: parseFloat(s.weight) || 0,
+        reps: parseInt(s.reps) || 0,
+        rpe: parseInt(s.rpe) || 0,
+        notes: s.notes || null,
+        pain_flag: s.pain_flag,
+        pain_areas: s.pain_areas,
+      })));
+    }
+  }, [onSetDataChange]);
 
   // Real-time field-level validation
   const fieldErrors = useMemo(() => {
@@ -133,11 +151,21 @@ export function DemoExerciseLogger({
     return map;
   }, [sets]);
 
-  const updateSet = (setNum: number, field: keyof SetLog, value: string | boolean) => {
+  const updateSet = (setNum: number, field: keyof SetLog, value: string | boolean | string[]) => {
     setSets((prev) =>
       prev.map((s) =>
         s.set_number === setNum ? { ...s, [field]: value, saved: false, errors: [], deviationWarnings: [] } : s
       )
+    );
+  };
+
+  const togglePainArea = (setNum: number, area: string) => {
+    setSets((prev) =>
+      prev.map((s) => {
+        if (s.set_number !== setNum) return s;
+        const has = s.pain_areas.includes(area);
+        return { ...s, pain_areas: has ? s.pain_areas.filter(a => a !== area) : [...s.pain_areas, area] };
+      })
     );
   };
 
@@ -183,6 +211,7 @@ export function DemoExerciseLogger({
         s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
+      notifySetDataChange(updated);
       return updated;
     });
   };
@@ -194,6 +223,7 @@ export function DemoExerciseLogger({
         s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
+      notifySetDataChange(updated);
       return updated;
     });
   };
@@ -211,7 +241,7 @@ export function DemoExerciseLogger({
     setEditingSet(setNum);
   };
 
-  const historyToShow = showFullHistory ? previousHistory : previousHistory.slice(0, 2);
+  const historyToShow = showFullHistory ? previousHistory : previousHistory.slice(0, 3);
 
   const hasFieldError = (setNum: number) => {
     const e = fieldErrors[setNum];
@@ -265,7 +295,7 @@ export function DemoExerciseLogger({
             ))}
           </div>
           <div className="flex gap-3">
-            {previousHistory.length > 2 && (
+            {previousHistory.length > 3 && (
               <button
                 onClick={() => setShowFullHistory(!showFullHistory)}
                 className="flex items-center gap-1 text-xs font-medium text-primary"
@@ -467,9 +497,9 @@ export function DemoExerciseLogger({
                   {PAIN_AREAS.map((area) => (
                     <button
                       key={area}
-                      onClick={() => updateSet(set.set_number, "pain_area", area)}
+                      onClick={() => togglePainArea(set.set_number, area)}
                       className={`rounded-md px-2.5 py-1 text-xs capitalize transition-colors ${
-                        set.pain_area === area
+                        set.pain_areas.includes(area)
                           ? "bg-destructive/20 text-destructive"
                           : "bg-secondary text-muted-foreground"
                       }`}
@@ -478,6 +508,9 @@ export function DemoExerciseLogger({
                     </button>
                   ))}
                 </div>
+                {set.pain_areas.length > 0 && (
+                  <p className="text-[10px] text-destructive">Selected: {set.pain_areas.join(", ")}</p>
+                )}
               </div>
             )}
             {set.showNotes && (

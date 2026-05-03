@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, type DemoBlock, type DemoExercise, type BlockType, type PreviousEntry } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil } from "lucide-react";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
@@ -23,6 +23,8 @@ export function DemoTodayWorkout() {
   const [completedCondExercises, setCompletedCondExercises] = useState<Set<string>>(new Set());
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [rpeError, setRpeError] = useState("");
+  const [savedSetData, setSavedSetData] = useState<Record<string, Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>>>({});
+  const [isEditing, setIsEditing] = useState(false);
 
   // Exercise-wise full history view
   if (exerciseHistoryView) {
@@ -87,6 +89,9 @@ export function DemoTodayWorkout() {
         onSaveSets={(count) => {
           setLoggedSets((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: count }));
         }}
+        onSetDataChange={(sets) => {
+          setSavedSetData((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: sets }));
+        }}
         onViewExerciseHistory={() => {
           setSelectedExercise(null);
           setExerciseHistoryView({ exercise: selectedExercise.exercise, history });
@@ -96,6 +101,40 @@ export function DemoTodayWorkout() {
   }
 
   if (completed) {
+    if (isEditing) {
+      return (
+        <div className="p-4 space-y-5">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsEditing(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <h2 className="text-lg font-bold text-foreground">Edit Workout</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">Tap an exercise to edit your logged sets.</p>
+          <div className="space-y-2">
+            {workout.blocks.flatMap((b) => b.exercises).map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => setSelectedExercise({ exercise: ex, block: workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))! })}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all active:scale-[0.98]"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {savedSetData[ex.exercise_id]?.length || loggedSets[ex.exercise_id] || 0} sets logged
+                  </p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+          <Button variant="secondary" onClick={() => setIsEditing(false)} className="h-12 w-full text-base">
+            Done Editing
+          </Button>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center p-8 space-y-6 min-h-[60vh]">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
@@ -110,8 +149,16 @@ export function DemoTodayWorkout() {
             <p className="text-sm text-muted-foreground">Session RPE: {sessionRpe}/10</p>
           )}
         </div>
+        <Button
+          onClick={() => setIsEditing(true)}
+          className="h-12 w-full max-w-xs"
+          variant="outline"
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit Workout
+        </Button>
         <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={() => { setCompleted(false); setShowFinish(false); }}>
-          Back to Workout
+          Back to Overview
         </Button>
       </div>
     );
@@ -161,20 +208,33 @@ export function DemoTodayWorkout() {
           session_rpe: rpeNum,
           notes: sessionNotes || null,
           completed: true,
-          exercises: allExercises.map((ex) => ({
-            exercise_name: ex.exercise_name,
-            prescribed_sets: ex.prescribed_sets,
-            prescribed_reps: ex.prescribed_reps,
-            sets: Array.from({ length: loggedSets[ex.exercise_id] || 0 }, (_, i) => ({
-              set_number: i + 1,
-              weight: 0,
-              reps: 0,
-              rpe: 0,
-              notes: null,
-              pain_flag: false,
-              pain_area: null,
-            })),
-          })),
+          exercises: allExercises.map((ex) => {
+            const setData = savedSetData[ex.exercise_id];
+            return {
+              exercise_name: ex.exercise_name,
+              prescribed_sets: ex.prescribed_sets,
+              prescribed_reps: ex.prescribed_reps,
+              sets: setData
+                ? setData.map(s => ({
+                    set_number: s.set_number,
+                    weight: s.weight,
+                    reps: s.reps,
+                    rpe: s.rpe,
+                    notes: s.notes,
+                    pain_flag: s.pain_flag,
+                    pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
+                  }))
+                : Array.from({ length: loggedSets[ex.exercise_id] || 0 }, (_, i) => ({
+                    set_number: i + 1,
+                    weight: 0,
+                    reps: 0,
+                    rpe: 0,
+                    notes: null,
+                    pain_flag: false,
+                    pain_area: null,
+                  })),
+            };
+          }),
         }
       );
 
