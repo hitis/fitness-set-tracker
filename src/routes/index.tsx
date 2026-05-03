@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AppAuthProvider, useAppAuth } from "@/hooks/use-app-auth";
+import { useAppAuth } from "@/hooks/use-app-auth";
 import { MobileLogin } from "@/components/MobileLogin";
 import { AppShell } from "@/components/AppShell";
 import { DemoAdminDashboard } from "@/components/admin/DemoAdminDashboard";
@@ -16,14 +16,6 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  return (
-    <AppAuthProvider>
-      <IndexInner />
-    </AppAuthProvider>
-  );
-}
-
-function IndexInner() {
   const { user, activeRole, isLoggedIn, logout } = useAppAuth();
 
   if (!isLoggedIn || !user || !activeRole) {
