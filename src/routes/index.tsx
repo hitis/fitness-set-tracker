@@ -99,7 +99,7 @@ function DemoIndexInner({ onExit }: { onExit: () => void }) {
   const demo = useDemo();
   return (
     <AppShell role={demo.role} onSignOut={onExit}>
-      {demo.role === "admin" ? <DemoAdminDashboard /> : <DemoTodayWorkout />}
+      {demo.role === "admin" ? <DemoAdminDashboard /> : <DemoTodayWorkout onBack={onExit} />}
     </AppShell>
   );
 }
