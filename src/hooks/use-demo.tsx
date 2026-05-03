@@ -396,6 +396,72 @@ export function addDemoHistoryEntry(entry: typeof DEMO_MEMBER_HISTORY[number], d
   notifyHistoryUpdate();
 }
 
+// ─── Central Workout Log Store ─────────────────────────────
+export interface WorkoutLogSet {
+  set_number: number;
+  weight: number;
+  reps: number;
+  rpe: number;
+  notes: string | null;
+  pain_flag: boolean;
+  pain_areas: string[];
+}
+
+export interface ConditioningLogEntry {
+  exercise_id: string;
+  completed: boolean;
+  weight: number | null;
+  rounds: number | null;
+  rpe: number | null;
+  notes: string | null;
+  pain_areas: string[];
+}
+
+export interface WorkoutLog {
+  user_id: string;
+  workout_id: string;
+  workout_date: string;
+  status: "not_started" | "in_progress" | "completed";
+  session_rpe: number | null;
+  session_notes: string | null;
+  strength_logs: Record<string, WorkoutLogSet[]>;
+  conditioning_logs: Record<string, ConditioningLogEntry>;
+  updated_at: string;
+}
+
+const _workoutLogs: Record<string, WorkoutLog> = {};
+
+function logKey(userId: string, workoutId: string, date: string) {
+  return `${userId}:${workoutId}:${date}`;
+}
+
+export function getWorkoutLog(userId: string, workoutId: string, date: string): WorkoutLog | null {
+  return _workoutLogs[logKey(userId, workoutId, date)] || null;
+}
+
+export function getOrCreateWorkoutLog(userId: string, workoutId: string, date: string): WorkoutLog {
+  const key = logKey(userId, workoutId, date);
+  if (!_workoutLogs[key]) {
+    _workoutLogs[key] = {
+      user_id: userId,
+      workout_id: workoutId,
+      workout_date: date,
+      status: "not_started",
+      session_rpe: null,
+      session_notes: null,
+      strength_logs: {},
+      conditioning_logs: {},
+      updated_at: new Date().toISOString(),
+    };
+  }
+  return _workoutLogs[key];
+}
+
+export function updateWorkoutLog(log: WorkoutLog): void {
+  const key = logKey(log.user_id, log.workout_id, log.workout_date);
+  _workoutLogs[key] = { ...log, updated_at: new Date().toISOString() };
+}
+
 // ─── Persisted demo role helpers ─────────────────────────────
 const DEMO_ROLE_KEY = "gymlog-demo-role";
 const DEMO_MODE_KEY = "gymlog-demo-mode";
