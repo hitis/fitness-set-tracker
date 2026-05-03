@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X, Pencil } from "lucide-react";
@@ -140,6 +140,14 @@ export function DemoExerciseLogger({
     });
   });
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top when opening exercise
+  useEffect(() => {
+    containerRef.current?.scrollIntoView({ block: "start" });
+    window.scrollTo(0, 0);
+  }, []);
+
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<number>>(new Set());
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
 
@@ -305,7 +313,7 @@ export function DemoExerciseLogger({
   };
 
   return (
-    <div className="p-4 space-y-5">
+    <div ref={containerRef} className="p-4 space-y-5">
       {/* Unsaved Changes Warning */}
       {showUnsavedWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -349,47 +357,58 @@ export function DemoExerciseLogger({
 
       {/* Previous History - Set-wise */}
       {previousHistory.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Previous History</h3>
-          <div className="space-y-3">
-            {historyToShow.map((entry, i) => (
-              <div key={i} className="rounded-lg bg-secondary/50 px-3 py-2 space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {format(new Date(entry.date + "T00:00:00"), "MMM d")}
-                </p>
-                <div className="space-y-0.5">
-                  {entry.sets.map((s) => (
-                    <div key={s.set_number} className="flex items-center gap-2 text-sm">
-                      <span className="w-8 text-xs text-muted-foreground">S{s.set_number}</span>
-                      <span className="font-semibold text-foreground">
-                        {s.weight > 0 ? `${s.weight}kg` : "BW"} × {s.reps}
-                      </span>
-                      <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3">
-            {previousHistory.length > 3 && (
-              <button
-                onClick={() => setShowFullHistory(!showFullHistory)}
-                className="flex items-center gap-1 text-xs font-medium text-primary"
-              >
-                {showFullHistory ? (
-                  <><ChevronUp className="h-3 w-3" /> Show less</>
-                ) : (
-                  <><ChevronDown className="h-3 w-3" /> View full history</>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <button
+            onClick={() => setShowFullHistory(!showFullHistory)}
+            className="flex w-full items-center justify-between p-3 text-left"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Last time</p>
+              <p className="text-sm text-foreground mt-0.5">
+                {(() => {
+                  const last = previousHistory[0];
+                  if (!last?.sets.length) return "No previous data";
+                  const s = last.sets[0];
+                  const parts = [];
+                  if (s.weight > 0) parts.push(`${s.weight}kg`);
+                  parts.push(`× ${s.reps}`);
+                  if (s.rpe) parts.push(`RPE ${s.rpe}`);
+                  return parts.join(" ");
+                })()}
+                {previousHistory[0]?.sets.length > 1 && (
+                  <span className="text-muted-foreground"> ({previousHistory[0].sets.length} sets)</span>
                 )}
-              </button>
-            )}
-            {onViewExerciseHistory && (
-              <button onClick={onViewExerciseHistory} className="text-xs font-medium text-primary underline">
-                All sessions →
-              </button>
-            )}
-          </div>
+              </p>
+            </div>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showFullHistory ? "rotate-180" : ""}`} />
+          </button>
+          {showFullHistory && (
+            <div className="border-t border-border p-3 space-y-3">
+              {previousHistory.map((entry, i) => (
+                <div key={i} className="rounded-lg bg-secondary/50 px-3 py-2 space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {format(new Date(entry.date + "T00:00:00"), "MMM d")}
+                  </p>
+                  <div className="space-y-0.5">
+                    {entry.sets.map((s) => (
+                      <div key={s.set_number} className="flex items-center gap-2 text-sm">
+                        <span className="w-8 text-xs text-muted-foreground">S{s.set_number}</span>
+                        <span className="font-semibold text-foreground">
+                          {s.weight > 0 ? `${s.weight}kg` : "—"} × {s.reps}
+                        </span>
+                        <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {onViewExerciseHistory && (
+                <button onClick={onViewExerciseHistory} className="text-xs font-medium text-primary underline">
+                  All sessions →
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
