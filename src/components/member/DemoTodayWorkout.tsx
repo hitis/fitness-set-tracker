@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, type De
 import { DEMO_MEMBER_HISTORY } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
@@ -28,6 +28,30 @@ export function DemoTodayWorkout() {
   const [savedSetData, setSavedSetData] = useState<Record<string, Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>>>({});
   const [showSavedSummary, setShowSavedSummary] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Compute stats
+  const allExercises = useMemo(() => workout.blocks.flatMap((b) => b.exercises), [workout]);
+  const totalPrescribedSets = useMemo(() => allExercises.reduce((sum, ex) => sum + ex.prescribed_sets, 0), [allExercises]);
+  const totalLoggedSets = useMemo(() => {
+    return Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size;
+  }, [loggedSets, completedCondExercises]);
+  const completionPct = totalPrescribedSets > 0 ? Math.round((totalLoggedSets / totalPrescribedSets) * 100) : 0;
+
+  const getExerciseStatus = (ex: DemoExercise, block: DemoBlock): "completed" | "partial" | "not_started" => {
+    const isConditioning = CONDITIONING_TYPES.includes(block.block_type);
+    if (isConditioning) return completedCondExercises.has(ex.exercise_id) ? "completed" : "not_started";
+    const logged = loggedSets[ex.exercise_id] || 0;
+    if (logged >= ex.prescribed_sets) return "completed";
+    if (logged > 0) return "partial";
+    return "not_started";
+  };
+
+  // Simple insight for post-submit
+  const getInsight = (): string => {
+    if (completionPct >= 100) return "You completed all prescribed sets 💪";
+    if (completionPct >= 75) return `You completed ${completionPct}% of your workout — solid effort!`;
+    return `${completionPct}% completed — every rep counts!`;
+  };
 
   // Exercise-wise full history view
   if (exerciseHistoryView) {
@@ -88,7 +112,9 @@ export function DemoTodayWorkout() {
       <DemoExerciseLogger
         exercise={selectedExercise.exercise}
         previousHistory={history}
-        onBack={() => setSelectedExercise(null)}
+        onBack={() => {
+          setSelectedExercise(null);
+        }}
         onSaveSets={(count) => {
           setLoggedSets((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: count }));
         }}
@@ -99,6 +125,7 @@ export function DemoTodayWorkout() {
           setSelectedExercise(null);
           setExerciseHistoryView({ exercise: selectedExercise.exercise, history });
         }}
+        initialSetData={savedSetData[selectedExercise.exercise.exercise_id]}
       />
     );
   }
@@ -115,21 +142,31 @@ export function DemoTodayWorkout() {
           </div>
           <p className="text-sm text-muted-foreground">Tap an exercise to edit your logged sets.</p>
           <div className="space-y-2">
-            {workout.blocks.flatMap((b) => b.exercises).map((ex) => (
-              <button
-                key={ex.id}
-                onClick={() => setSelectedExercise({ exercise: ex, block: workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))! })}
-                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all active:scale-[0.98]"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {savedSetData[ex.exercise_id]?.length || loggedSets[ex.exercise_id] || 0} sets logged
-                  </p>
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </button>
-            ))}
+            {workout.blocks.map((block) => block.exercises.map((ex) => {
+              const status = getExerciseStatus(ex, block);
+              return (
+                <button
+                  key={ex.id}
+                  onClick={() => setSelectedExercise({ exercise: ex, block })}
+                  className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-all active:scale-[0.98] ${
+                    status === "completed" ? "border-primary/30 bg-primary/5" : "border-border bg-card"
+                  }`}
+                >
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                    status === "completed" ? "bg-primary text-primary-foreground" : status === "partial" ? "bg-amber-500/20 text-amber-400" : "bg-secondary text-muted-foreground"
+                  }`}>
+                    {status === "completed" ? <Check className="h-4 w-4" /> : status === "partial" ? "…" : "—"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {savedSetData[ex.exercise_id]?.length || loggedSets[ex.exercise_id] || 0}/{ex.prescribed_sets} sets
+                    </p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </button>
+              );
+            }))}
           </div>
           <Button variant="secondary" onClick={() => setIsEditing(false)} className="h-12 w-full text-base">
             Done Editing
@@ -139,45 +176,57 @@ export function DemoTodayWorkout() {
     }
 
     return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-5 min-h-[60vh]">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
-          <Trophy className="h-10 w-10 text-primary" />
+      <div className="p-4 space-y-5">
+        <div className="flex flex-col items-center py-6 space-y-4">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
+            <Trophy className="h-10 w-10 text-primary" />
+          </div>
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-bold text-foreground">Workout Completed</h2>
+            <p className="text-muted-foreground capitalize">
+              {workout.training_type.replace("_", " ")} · {workout.phase}
+            </p>
+          </div>
         </div>
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold text-foreground">Workout Saved</h2>
-          <p className="text-muted-foreground">
-            {workout.training_type.replace("_", " ")} · {workout.phase}
-          </p>
-          {sessionRpe && (
-            <p className="text-sm text-muted-foreground">Session RPE: {sessionRpe}/10</p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size} sets logged
-          </p>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-border bg-card p-3 text-center">
+            <p className="text-lg font-bold text-foreground">{totalLoggedSets}</p>
+            <p className="text-[10px] text-muted-foreground uppercase">Sets</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3 text-center">
+            <p className="text-lg font-bold text-foreground">{sessionRpe || "—"}</p>
+            <p className="text-[10px] text-muted-foreground uppercase">RPE</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3 text-center">
+            <p className="text-lg font-bold text-primary">{completionPct}%</p>
+            <p className="text-[10px] text-muted-foreground uppercase">Complete</p>
+          </div>
         </div>
-        <Button
-          onClick={() => setShowSavedSummary(true)}
-          className="h-12 w-full max-w-xs"
-        >
-          <Eye className="h-4 w-4 mr-2" />
-          View Saved Workout
-        </Button>
-        <Button
-          onClick={() => setIsEditing(true)}
-          className="h-12 w-full max-w-xs"
-          variant="outline"
-        >
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit Workout
-        </Button>
-        <Link to="/history">
-          <Button variant="ghost" className="h-12 w-full max-w-xs text-primary">
-            View History
+
+        {/* Insight */}
+        <div className="rounded-xl border border-border bg-card/50 p-4 flex items-center gap-3">
+          <TrendingUp className="h-5 w-5 text-primary shrink-0" />
+          <p className="text-sm text-foreground">{getInsight()}</p>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-2">
+          <Button onClick={() => setShowSavedSummary(true)} className="h-12 w-full text-base">
+            <Eye className="h-4 w-4 mr-2" />
+            View Workout Details
           </Button>
-        </Link>
-        <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={() => { setCompleted(false); setShowFinish(false); setShowSavedSummary(false); }}>
-          Back to Today
-        </Button>
+          <Button onClick={() => setIsEditing(true)} className="h-12 w-full text-base" variant="outline">
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit Workout
+          </Button>
+          <Link to="/history" className="block">
+            <Button variant="secondary" className="h-12 w-full text-base">
+              Go to History
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -270,20 +319,21 @@ export function DemoTodayWorkout() {
       }
 
       // Add to history immediately
-      const totalSets = Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size;
-      const entryId = `s-new-${Date.now()}`;
-      addDemoHistoryEntry(
-        {
-          id: entryId,
-          workout_date: workout.workout_date,
-          training_type: workout.training_type,
-          phase: workout.phase,
+      // Prevent duplicate: check if today's date already has an entry
+      const todayDate = workout.workout_date;
+      const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
+      const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
+
+      if (existingIdx >= 0) {
+        // Update existing entry
+        DEMO_MEMBER_HISTORY[existingIdx] = {
+          ...DEMO_MEMBER_HISTORY[existingIdx],
           session_rpe: rpeNum,
           completed: true,
-          exercise_count: totalSets,
-        },
-        {
-          workout_date: workout.workout_date,
+          exercise_count: totalLoggedSets,
+        };
+        DEMO_HISTORY_DETAILS[entryId] = {
+          workout_date: todayDate,
           training_type: workout.training_type,
           phase: workout.phase,
           session_rpe: rpeNum,
@@ -305,26 +355,62 @@ export function DemoTodayWorkout() {
                     pain_flag: s.pain_flag,
                     pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
                   }))
-                : Array.from({ length: loggedSets[ex.exercise_id] || 0 }, (_, i) => ({
-                    set_number: i + 1,
-                    weight: 0,
-                    reps: 0,
-                    rpe: 0,
-                    notes: null,
-                    pain_flag: false,
-                    pain_area: null,
-                  })),
+                : [],
+            };
+          }),
+        };
+      } else {
+        addDemoHistoryEntry(
+        {
+          id: entryId,
+          workout_date: todayDate,
+          training_type: workout.training_type,
+          phase: workout.phase,
+          session_rpe: rpeNum,
+          completed: true,
+          exercise_count: totalLoggedSets,
+        },
+        {
+          workout_date: todayDate,
+          training_type: workout.training_type,
+          phase: workout.phase,
+          session_rpe: rpeNum,
+          notes: sessionNotes || null,
+          completed: true,
+          exercises: allExercises.map((ex) => {
+            const setData = savedSetData[ex.exercise_id];
+            return {
+              exercise_name: ex.exercise_name,
+              prescribed_sets: ex.prescribed_sets,
+              prescribed_reps: ex.prescribed_reps,
+              sets: setData
+                ? setData.map(s => ({
+                    set_number: s.set_number,
+                    weight: s.weight,
+                    reps: s.reps,
+                    rpe: s.rpe,
+                    notes: s.notes,
+                    pain_flag: s.pain_flag,
+                    pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
+                  }))
+                : [],
             };
           }),
         }
       );
+      }
 
       setCompleted(true);
     };
 
     return (
       <div className="p-4 space-y-6">
-        <h2 className="text-xl font-bold text-foreground">Finish Workout</h2>
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setShowFinish(false); setShowIncompleteWarning(false); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-xl font-bold text-foreground">Finish Workout</h2>
+        </div>
 
         {incompleteExercises.length > 0 && showIncompleteWarning && (
           <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-4 space-y-2">
@@ -370,9 +456,6 @@ export function DemoTodayWorkout() {
         <Button onClick={handleSubmit} className="h-14 w-full text-base font-bold" size="lg">
           Save & Complete
         </Button>
-        <Button variant="secondary" onClick={() => setShowFinish(false)} className="h-12 w-full text-base">
-          ← Back
-        </Button>
       </div>
     );
   }
@@ -413,7 +496,7 @@ export function DemoTodayWorkout() {
             <div>
               <p className="font-semibold text-foreground">Today's workout saved</p>
               <p className="text-xs text-muted-foreground">
-                {Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size} sets logged
+                {totalLoggedSets} sets logged · {completionPct}% complete
                 {sessionRpe && ` · RPE ${sessionRpe}/10`}
               </p>
             </div>
@@ -457,23 +540,22 @@ export function DemoTodayWorkout() {
               )}
               <div className="space-y-2">
                 {block.exercises.map((ex) => {
+                  const status = getExerciseStatus(ex, block);
                   const logged = loggedSets[ex.exercise_id] || 0;
-                  const condDone = completedCondExercises.has(ex.exercise_id);
-                  const isDone = isConditioning ? condDone : logged >= ex.prescribed_sets;
                   return (
                     <button
                       key={ex.id}
                       onClick={() => setSelectedExercise({ exercise: ex, block })}
                       className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-all active:scale-[0.98] ${
-                        isDone ? "border-primary/30 bg-primary/5" : "border-border bg-card"
+                        status === "completed" ? "border-primary/30 bg-primary/5" : status === "partial" ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-card"
                       }`}
                     >
                       <div
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
-                          isDone ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+                          status === "completed" ? "bg-primary text-primary-foreground" : status === "partial" ? "bg-amber-500/20 text-amber-400" : "bg-secondary text-muted-foreground"
                         }`}
                       >
-                        {isDone ? <Check className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                        {status === "completed" ? <Check className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
@@ -483,7 +565,7 @@ export function DemoTodayWorkout() {
                         </div>
                       </div>
                       {!isConditioning && logged > 0 && (
-                        <span className="text-xs font-bold text-primary">
+                        <span className={`text-xs font-bold ${status === "completed" ? "text-primary" : "text-amber-400"}`}>
                           {logged}/{ex.prescribed_sets}
                         </span>
                       )}
