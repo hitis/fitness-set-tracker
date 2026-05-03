@@ -103,7 +103,7 @@ export function DemoWorkoutHistory() {
     ).slice(0, 5);
   }, [searchQuery, allExerciseNames]);
 
-  // Exercise history drill-down
+  // Exercise history drill-down — grouped by exercise
   if (exerciseView) {
     const sessions: { date: string; detail: HistoryWorkoutDetail; exercise: HistoryExerciseDetail; historyId: string }[] = [];
     for (const h of DEMO_MEMBER_HISTORY) {
@@ -165,6 +165,77 @@ export function DemoWorkoutHistory() {
     );
   }
 
+  // Search results — grouped by exercise name
+  if (searchQuery.trim() && suggestions.length === 0) {
+    // Build exercise-grouped results
+    const exerciseGroups: Record<string, { date: string; sets: HistoryExerciseDetail["sets"]; historyId: string; detail: HistoryWorkoutDetail }[]> = {};
+    for (const h of DEMO_MEMBER_HISTORY) {
+      const detail = DEMO_HISTORY_DETAILS[h.id];
+      if (!detail) continue;
+      for (const ex of detail.exercises) {
+        if (ex.exercise_name.toLowerCase().includes(searchQuery.toLowerCase())) {
+          if (!exerciseGroups[ex.exercise_name]) exerciseGroups[ex.exercise_name] = [];
+          exerciseGroups[ex.exercise_name].push({ date: h.workout_date, sets: ex.sets, historyId: h.id, detail });
+        }
+      }
+    }
+    const groupNames = Object.keys(exerciseGroups).sort();
+
+    if (groupNames.length > 0) {
+      return (
+        <div className="p-4 space-y-4">
+          <h2 className="text-lg font-bold text-foreground">Workout History</h2>
+          {/* Search bar */}
+          <div className="relative" role="search">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search exercises (e.g. squat, press)"
+              className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">{groupNames.length} exercise{groupNames.length !== 1 ? "s" : ""} found</p>
+          <div className="space-y-5">
+            {groupNames.map((name) => (
+              <div key={name} className="space-y-2">
+                <button
+                  onClick={() => { setSearchQuery(""); setExerciseView({ name }); }}
+                  className="text-sm font-bold text-primary underline"
+                >
+                  {name}
+                </button>
+                <div className="space-y-1 pl-1">
+                  {exerciseGroups[name].map((entry, i) => (
+                    <div key={i} className="rounded-lg bg-card border border-border p-3 space-y-1">
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        {format(new Date(entry.date + "T00:00:00"), "MMM d")}
+                      </p>
+                      {entry.sets.map((set) => (
+                        <div key={set.set_number} className="flex items-center gap-2 text-sm">
+                          <span className="w-8 text-xs text-muted-foreground">S{set.set_number}</span>
+                          <span className="font-semibold text-foreground">
+                            {set.weight > 0 ? `${set.weight}kg` : "BW"} × {set.reps}
+                          </span>
+                          <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
+                          {set.pain_flag && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+  }
+
   if (selectedId) {
     const detail = DEMO_HISTORY_DETAILS[selectedId];
     if (detail) {
@@ -172,16 +243,7 @@ export function DemoWorkoutHistory() {
     }
   }
 
-  // Filter history by exercise name search
-  const filteredHistory = searchQuery.trim()
-    ? DEMO_MEMBER_HISTORY.filter((h) => {
-        const detail = DEMO_HISTORY_DETAILS[h.id];
-        if (!detail) return false;
-        return detail.exercises.some((ex) =>
-          ex.exercise_name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      })
-    : DEMO_MEMBER_HISTORY;
+  const filteredHistory = DEMO_MEMBER_HISTORY;
 
   return (
     <div className="p-4 space-y-4">
