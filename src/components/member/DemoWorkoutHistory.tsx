@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil } from "lucide-react";
+import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryExerciseDetail, type HistorySetLog } from "@/hooks/use-demo";
+import { useNavigate } from "@tanstack/react-router";
 
 function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<HistoryWorkoutDetail>(detail);
+  const [expandedPain, setExpandedPain] = useState<string | null>(null);
 
   const updateSetField = (exIdx: number, setIdx: number, field: keyof HistorySetLog, value: number | string | boolean | null) => {
     setEditData(prev => ({
@@ -126,27 +128,27 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
                         <div>
                           <label className="text-[10px] text-muted-foreground uppercase">Weight</label>
                           <Input
-                            type="number" inputMode="decimal" min="0"
-                            value={set.weight}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "weight", parseFloat(e.target.value) || 0)}
+                            type="number" inputMode="decimal"
+                            value={set.weight || ""}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "weight", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                             className="h-10 bg-secondary border-0 text-center font-bold"
                           />
                         </div>
                         <div>
                           <label className="text-[10px] text-muted-foreground uppercase">Reps</label>
                           <Input
-                            type="number" inputMode="numeric" min="1"
-                            value={set.reps}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "reps", parseInt(e.target.value) || 0)}
+                            type="number" inputMode="numeric"
+                            value={set.reps || ""}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "reps", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                             className="h-10 bg-secondary border-0 text-center font-bold"
                           />
                         </div>
                         <div>
                           <label className="text-[10px] text-muted-foreground uppercase">RPE</label>
                           <Input
-                            type="number" inputMode="numeric" min="1" max="10"
-                            value={set.rpe}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "rpe", parseInt(e.target.value) || 0)}
+                            type="number" inputMode="numeric"
+                            value={set.rpe || ""}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "rpe", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                             className="h-10 bg-secondary border-0 text-center font-bold"
                           />
                         </div>
@@ -156,17 +158,29 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
                     <div className="flex items-center gap-3">
                       <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
                       <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                        {set.weight > 0 ? `${set.weight}kg` : "BW"}
+                        {set.weight > 0 ? `${set.weight}kg` : "—"}
                       </span>
                       <span className="text-sm text-foreground">× {set.reps}</span>
                       <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
                       {set.pain_flag && (
-                        <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />
-                      )}
-                      {set.notes && (
-                        <span className="text-xs text-muted-foreground italic ml-auto truncate max-w-[80px]">{set.notes}</span>
+                        <button
+                          onClick={() => setExpandedPain(expandedPain === `${exIdx}-${setIdx}` ? null : `${exIdx}-${setIdx}`)}
+                          className="flex items-center gap-1 ml-auto text-destructive"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          <span className="text-[10px] font-medium capitalize">{set.pain_area || "Pain"}</span>
+                        </button>
                       )}
                     </div>
+                    {expandedPain === `${exIdx}-${setIdx}` && set.pain_flag && (
+                      <div className="mt-2 rounded-lg bg-destructive/10 border border-destructive/20 p-2 space-y-1">
+                        <p className="text-xs text-destructive font-medium">Pain: {set.pain_area || "Not specified"}</p>
+                        {set.notes && <p className="text-xs text-muted-foreground italic">{set.notes}</p>}
+                      </div>
+                    )}
+                    {!set.pain_flag && set.notes && (
+                      <p className="text-xs text-muted-foreground italic mt-1">{set.notes}</p>
+                    )}
                   )}
                 </div>
               ))}
