@@ -205,7 +205,8 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
   );
 }
 
-export function DemoWorkoutHistory() {
+export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
+  const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -278,11 +279,16 @@ export function DemoWorkoutHistory() {
                     <div key={set.set_number} className="flex items-center gap-3 px-4 py-3">
                       <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
                       <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                        {set.weight > 0 ? `${set.weight}kg` : "BW"}
+                        {set.weight > 0 ? `${set.weight}kg` : "—"}
                       </span>
                       <span className="text-sm text-foreground">× {set.reps}</span>
                       <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                      {set.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
+                      {set.pain_flag && (
+                        <span className="flex items-center gap-0.5 text-destructive ml-auto">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          <span className="text-[10px] capitalize">{set.pain_area || "Pain"}</span>
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -348,10 +354,15 @@ export function DemoWorkoutHistory() {
                         <div key={set.set_number} className="flex items-center gap-2 text-sm">
                           <span className="w-8 text-xs text-muted-foreground">S{set.set_number}</span>
                           <span className="font-semibold text-foreground">
-                            {set.weight > 0 ? `${set.weight}kg` : "BW"} × {set.reps}
+                            {set.weight > 0 ? `${set.weight}kg` : "—"} × {set.reps}
                           </span>
                           <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                          {set.pain_flag && <AlertTriangle className="h-3 w-3 text-destructive" />}
+                          {set.pain_flag && (
+                            <span className="flex items-center gap-0.5 text-destructive">
+                              <AlertTriangle className="h-3 w-3" />
+                              <span className="text-[10px] capitalize">{set.pain_area || "Pain"}</span>
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -376,7 +387,15 @@ export function DemoWorkoutHistory() {
 
   return (
     <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-foreground">Workout History</h2>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onBack ? onBack() : navigate({ to: "/" })}
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground active:scale-95 transition-transform"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h2 className="text-lg font-bold text-foreground">Workout History</h2>
+      </div>
 
       {/* Search */}
       {DEMO_MEMBER_HISTORY.length > 0 && (
