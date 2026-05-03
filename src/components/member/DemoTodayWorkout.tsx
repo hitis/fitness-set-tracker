@@ -26,14 +26,14 @@ import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, Tre
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
-const DEMO_USER_ID = "demo-user-001";
 
-export function DemoTodayWorkout({ onBack }: { onBack?: () => void }) {
+export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const workout = DEMO_TODAY_WORKOUT;
+  const activeUserId = userId || "demo-user-001";
 
   // Central log — single source of truth
   const [log, setLog] = useState<WorkoutLog>(() =>
-    getOrCreateWorkoutLog(DEMO_USER_ID, workout.id, workout.workout_date)
+    getOrCreateWorkoutLog(activeUserId, workout.id, workout.workout_date)
   );
 
   // Sync log to module store on every change
