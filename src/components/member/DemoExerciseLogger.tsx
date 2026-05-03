@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, ChevronUp, Info, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import type { DemoExercise, PreviousEntry } from "@/hooks/use-demo";
 
-interface SetLog {
+export interface SetLog {
   set_number: number;
   weight: string;
   reps: string;
@@ -17,6 +17,7 @@ interface SetLog {
   saved: boolean;
   errors: string[];
   deviationWarnings: string[];
+  dirty: boolean;
 }
 
 interface FieldErrors {
@@ -93,6 +94,7 @@ export function DemoExerciseLogger({
   onSaveSets,
   onViewExerciseHistory,
   onSetDataChange,
+  initialSetData,
 }: {
   exercise: DemoExercise;
   previousHistory: PreviousEntry[];
@@ -100,25 +102,46 @@ export function DemoExerciseLogger({
   onSaveSets: (count: number) => void;
   onViewExerciseHistory?: () => void;
   onSetDataChange?: (sets: Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>) => void;
+  initialSetData?: Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>;
 }) {
-  const [sets, setSets] = useState<SetLog[]>(() =>
-    Array.from({ length: exercise.prescribed_sets }, (_, i) => ({
-      set_number: i + 1,
-      weight: "",
-      reps: "",
-      rpe: "",
-      notes: "",
-      pain_flag: false,
-      pain_areas: [],
-      showNotes: false,
-      saved: false,
-      errors: [],
-      deviationWarnings: [],
-    }))
-  );
+  const [sets, setSets] = useState<SetLog[]>(() => {
+    return Array.from({ length: exercise.prescribed_sets }, (_, i) => {
+      const existing = initialSetData?.find(s => s.set_number === i + 1);
+      if (existing) {
+        return {
+          set_number: i + 1,
+          weight: existing.weight > 0 ? String(existing.weight) : "",
+          reps: existing.reps > 0 ? String(existing.reps) : "",
+          rpe: existing.rpe > 0 ? String(existing.rpe) : "",
+          notes: existing.notes || "",
+          pain_flag: existing.pain_flag,
+          pain_areas: existing.pain_areas || [],
+          showNotes: !!(existing.notes),
+          saved: true,
+          errors: [],
+          deviationWarnings: [],
+          dirty: false,
+        };
+      }
+      return {
+        set_number: i + 1,
+        weight: "",
+        reps: "",
+        rpe: "",
+        notes: "",
+        pain_flag: false,
+        pain_areas: [],
+        showNotes: false,
+        saved: false,
+        errors: [],
+        deviationWarnings: [],
+        dirty: false,
+      };
+    });
+  });
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<number>>(new Set());
-  const [editingSet, setEditingSet] = useState<number | null>(null);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
 
   const lastSessionAvg = getLastSessionAvgWeight(previousHistory);
 
@@ -151,10 +174,44 @@ export function DemoExerciseLogger({
     return map;
   }, [sets]);
 
+  const hasDirtyData = sets.some(s => s.dirty);
+
+  const handleBack = () => {
+    if (hasDirtyData) {
+      setShowUnsavedWarning(true);
+    } else {
+      onBack();
+    }
+  };
+
+  const handleSaveAndExit = () => {
+    // Save all valid unsaved sets, then exit
+    setSets((prev) => {
+      const updated = prev.map((s) => {
+        if (s.saved && !s.dirty) return s;
+        if (!s.weight && !s.reps) return s;
+        const w = s.weight ? parseFloat(s.weight) : null;
+        const r = s.reps ? parseInt(s.reps) : null;
+        const rpe = s.rpe ? parseInt(s.rpe) : null;
+        const errors: string[] = [];
+        if (s.weight && (w === null || w <= 0)) errors.push("Weight must be > 0");
+        if (s.reps && (r === null || r <= 0)) errors.push("Reps must be > 0");
+        if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be 1-10");
+        if (errors.length > 0) return { ...s, errors, deviationWarnings: [] };
+        return { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] };
+      });
+      onSaveSets(updated.filter((s) => s.saved).length);
+      notifySetDataChange(updated);
+      return updated;
+    });
+    setShowUnsavedWarning(false);
+    setTimeout(() => onBack(), 50);
+  };
+
   const updateSet = (setNum: number, field: keyof SetLog, value: string | boolean | string[]) => {
     setSets((prev) =>
       prev.map((s) =>
-        s.set_number === setNum ? { ...s, [field]: value, saved: false, errors: [], deviationWarnings: [] } : s
+        s.set_number === setNum ? { ...s, [field]: value, dirty: true, errors: [], deviationWarnings: [] } : s
       )
     );
   };
@@ -208,7 +265,7 @@ export function DemoExerciseLogger({
       }
 
       const updated = prev.map((s) =>
-        s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
+        s.set_number === setNum ? { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
       notifySetDataChange(updated);
@@ -220,7 +277,7 @@ export function DemoExerciseLogger({
     setDismissedWarnings((prev) => new Set(prev).add(setNum));
     setSets((prev) => {
       const updated = prev.map((s) =>
-        s.set_number === setNum ? { ...s, saved: true, errors: [], deviationWarnings: [] } : s
+        s.set_number === setNum ? { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] } : s
       );
       onSaveSets(updated.filter((s) => s.saved).length);
       notifySetDataChange(updated);
@@ -234,11 +291,10 @@ export function DemoExerciseLogger({
       if (!prevSet) return prev;
       return prev.map((s) =>
         s.set_number === setNum
-          ? { ...s, weight: prevSet.weight, reps: prevSet.reps, rpe: prevSet.rpe, saved: false, errors: [], deviationWarnings: [] }
+          ? { ...s, weight: prevSet.weight, reps: prevSet.reps, rpe: prevSet.rpe, dirty: true, errors: [], deviationWarnings: [] }
           : s
       );
     });
-    setEditingSet(setNum);
   };
 
   const historyToShow = showFullHistory ? previousHistory : previousHistory.slice(0, 3);
@@ -250,9 +306,30 @@ export function DemoExerciseLogger({
 
   return (
     <div className="p-4 space-y-5">
+      {/* Unsaved Changes Warning */}
+      {showUnsavedWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 space-y-4 shadow-xl">
+            <h3 className="text-lg font-bold text-foreground">Unsaved Changes</h3>
+            <p className="text-sm text-muted-foreground">You have unsaved changes. Save before leaving?</p>
+            <div className="space-y-2">
+              <Button onClick={handleSaveAndExit} className="h-12 w-full text-base font-bold">
+                Save & Exit
+              </Button>
+              <Button variant="destructive" onClick={() => { setShowUnsavedWarning(false); onBack(); }} className="h-12 w-full text-base">
+                Discard
+              </Button>
+              <Button variant="secondary" onClick={() => setShowUnsavedWarning(false)} className="h-12 w-full text-base">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="flex h-11 w-11 items-center justify-center rounded-xl bg-card text-muted-foreground active:scale-95 transition-transform">
+        <button onClick={handleBack} className="flex h-11 w-11 items-center justify-center rounded-xl bg-card text-muted-foreground active:scale-95 transition-transform">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1">
@@ -320,7 +397,7 @@ export function DemoExerciseLogger({
       <div className="space-y-3">
         {sets.map((set) => (
           <div key={set.set_number} className={`rounded-xl border bg-card p-4 space-y-3 transition-colors ${
-            set.saved && editingSet !== set.set_number ? "border-primary/30" : "border-border"
+            set.saved && !set.dirty ? "border-primary/30" : "border-border"
           }`}>
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-foreground">Set {set.set_number}</span>
@@ -334,42 +411,17 @@ export function DemoExerciseLogger({
                     Copy last
                   </button>
                 )}
-                {set.saved && editingSet !== set.set_number && (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 text-primary">
-                      <Check className="h-4 w-4" />
-                      <span className="text-[10px] font-bold">Saved</span>
-                    </div>
-                    <button
-                      onClick={() => setEditingSet(set.set_number)}
-                      className="flex items-center gap-1 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-95"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      Edit
-                    </button>
+                {set.saved && !set.dirty && (
+                  <div className="flex items-center gap-1 text-primary">
+                    <Check className="h-4 w-4" />
+                    <span className="text-[10px] font-bold">Saved</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Read-only view for saved sets not being edited */}
-            {set.saved && editingSet !== set.set_number ? (
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-secondary/50 p-3 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Weight</p>
-                  <p className="text-lg font-bold text-foreground">{set.weight || "—"}</p>
-                </div>
-                <div className="rounded-lg bg-secondary/50 p-3 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Reps</p>
-                  <p className="text-lg font-bold text-foreground">{set.reps || "—"}</p>
-                </div>
-                <div className="rounded-lg bg-secondary/50 p-3 text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">RPE</p>
-                  <p className="text-lg font-bold text-foreground">{set.rpe || "—"}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
+            {/* Always editable inputs */}
+            <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
                   <NumInput
@@ -401,10 +453,8 @@ export function DemoExerciseLogger({
                   />
                 </div>
               </div>
-            )}
 
-            {/* Actions row - only show for editable sets */}
-            {(!set.saved || editingSet === set.set_number) && (
+            {/* Actions row */}
             <div className="flex items-center gap-2 flex-wrap">
               {!set.showNotes && (
                 <button
@@ -425,27 +475,15 @@ export function DemoExerciseLogger({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Pain / Discomfort
               </button>
-              {(set.weight || set.reps) && set.errors.length === 0 && set.deviationWarnings.length === 0 && !hasFieldError(set.set_number) && (
+              {set.dirty && (set.weight || set.reps) && set.errors.length === 0 && set.deviationWarnings.length === 0 && !hasFieldError(set.set_number) && (
                 <button
-                  onClick={() => {
-                    saveSet(set.set_number);
-                    setEditingSet(null);
-                  }}
+                  onClick={() => saveSet(set.set_number)}
                   className="ml-auto rounded-lg bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground transition-colors active:scale-95"
                 >
-                  {editingSet === set.set_number ? "Save Changes" : "Save"}
-                </button>
-              )}
-              {editingSet === set.set_number && (
-                <button
-                  onClick={() => setEditingSet(null)}
-                  className="rounded-lg bg-secondary px-4 py-2.5 text-xs font-medium text-muted-foreground active:scale-95"
-                >
-                  Cancel
+                  Save
                 </button>
               )}
             </div>
-            )}
 
             {/* Validation Errors */}
             {set.errors.length > 0 && (
@@ -475,7 +513,7 @@ export function DemoExerciseLogger({
                 </div>
                 <div className="flex gap-2 pt-1 pl-10">
                   <button
-                    onClick={() => { confirmAndSave(set.set_number); setEditingSet(null); }}
+                    onClick={() => confirmAndSave(set.set_number)}
                     className="rounded-md bg-primary px-4 py-2 text-xs font-bold text-primary-foreground active:scale-95"
                   >
                     Confirm & Save
@@ -528,25 +566,22 @@ export function DemoExerciseLogger({
       </div>
 
       {/* Save All Sets */}
-      {sets.some(s => !s.saved && (s.weight || s.reps)) && (
+      {sets.some(s => s.dirty && (s.weight || s.reps)) && (
         <Button
           onClick={() => {
-            // Validate all unsaved sets with data, save valid ones
-            let anyError = false;
             setSets((prev) => {
               const updated = prev.map((s) => {
-                if (s.saved) return s;
+                if (s.saved && !s.dirty) return s;
                 if (!s.weight && !s.reps) return s;
                 const w = s.weight ? parseFloat(s.weight) : null;
                 const r = s.reps ? parseInt(s.reps) : null;
                 const rpe = s.rpe ? parseInt(s.rpe) : null;
                 const errors: string[] = [];
-                if (!s.weight && !s.reps) errors.push("Enter weight and reps");
                 if (s.weight && (w === null || w <= 0)) errors.push("Weight must be > 0");
                 if (s.reps && (r === null || r <= 0)) errors.push("Reps must be > 0");
                 if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be 1-10");
-                if (errors.length > 0) { anyError = true; return { ...s, errors, deviationWarnings: [] }; }
-                return { ...s, saved: true, errors: [], deviationWarnings: [] };
+                if (errors.length > 0) return { ...s, errors, deviationWarnings: [] };
+                return { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] };
               });
               onSaveSets(updated.filter((s) => s.saved).length);
               notifySetDataChange(updated);
@@ -560,7 +595,7 @@ export function DemoExerciseLogger({
         </Button>
       )}
 
-      <Button variant="secondary" onClick={onBack} className="h-14 w-full text-base font-semibold active:scale-[0.98]">
+      <Button variant="secondary" onClick={handleBack} className="h-14 w-full text-base font-semibold active:scale-[0.98]">
         ← Back to Workout
       </Button>
     </div>
