@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
