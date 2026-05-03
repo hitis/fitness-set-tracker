@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/AppShell";
 import { DemoProviderWithRole, DemoProviderAuto, useDemo } from "@/hooks/use-demo";
@@ -37,9 +38,10 @@ function HistoryPage() {
 
 function DemoHistoryInner() {
   const demo = useDemo();
+  const navigate = useNavigate();
   return (
     <AppShell role={demo.role} onSignOut={() => {}}>
-      <DemoWorkoutHistory />
+      <DemoWorkoutHistory onBack={() => navigate({ to: "/" })} />
     </AppShell>
   );
 }
