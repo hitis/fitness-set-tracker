@@ -57,7 +57,7 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <p className="text-lg font-bold text-foreground">{editData.exercises.length}</p>
           <p className="text-[10px] text-muted-foreground uppercase">Exercises</p>
@@ -78,9 +78,19 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <p className="text-lg font-bold text-primary">
-            {editData.completed ? <Check className="h-5 w-5 mx-auto" /> : "—"}
+            {(() => {
+              const totalSets = editData.exercises.reduce((sum, ex) => sum + ex.prescribed_sets, 0);
+              const loggedSets = editData.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+              return totalSets > 0 ? Math.round((loggedSets / totalSets) * 100) + "%" : "—";
+            })()}
           </p>
-          <p className="text-[10px] text-muted-foreground uppercase">Status</p>
+          <p className="text-[10px] text-muted-foreground uppercase">Complete</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 text-center">
+          <p className="text-lg font-bold text-foreground">
+            {editData.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)}
+          </p>
+          <p className="text-[10px] text-muted-foreground uppercase">Sets</p>
         </div>
       </div>
 
@@ -427,6 +437,14 @@ export function DemoWorkoutHistory() {
                       · <Star className="h-3 w-3 inline text-primary" /> {h.session_rpe}/10
                     </span>
                   )}
+                  {(() => {
+                    const detail = DEMO_HISTORY_DETAILS[h.id];
+                    if (!detail) return null;
+                    const totalSets = detail.exercises.reduce((sum, ex) => sum + ex.prescribed_sets, 0);
+                    const loggedSets = detail.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+                    const pct = totalSets > 0 ? Math.round((loggedSets / totalSets) * 100) : 0;
+                    return <span className="ml-1 text-primary font-semibold">· {pct}%</span>;
+                  })()}
                 </p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
