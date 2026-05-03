@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Dumbbell, History, LogOut, LayoutDashboard, RefreshCw } from "lucide-react";
+import { Dumbbell, History, LogOut, LayoutDashboard } from "lucide-react";
 import { useAppAuth, type UserRole } from "@/hooks/use-app-auth";
 
 interface AppShellProps {
