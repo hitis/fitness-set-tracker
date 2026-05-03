@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, type DemoBlock, type DemoExercise, type BlockType, type PreviousEntry } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Clock, Eye } from "lucide-react";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
@@ -24,6 +24,7 @@ export function DemoTodayWorkout() {
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [rpeError, setRpeError] = useState("");
   const [savedSetData, setSavedSetData] = useState<Record<string, Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>>>({});
+  const [showSavedSummary, setShowSavedSummary] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   // Exercise-wise full history view
@@ -136,7 +137,7 @@ export function DemoTodayWorkout() {
     }
 
     return (
-      <div className="flex flex-col items-center justify-center p-8 space-y-6 min-h-[60vh]">
+      <div className="flex flex-col items-center justify-center p-8 space-y-5 min-h-[60vh]">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
           <Trophy className="h-10 w-10 text-primary" />
         </div>
@@ -148,7 +149,17 @@ export function DemoTodayWorkout() {
           {sessionRpe && (
             <p className="text-sm text-muted-foreground">Session RPE: {sessionRpe}/10</p>
           )}
+          <p className="text-xs text-muted-foreground">
+            {Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size} sets logged
+          </p>
         </div>
+        <Button
+          onClick={() => setShowSavedSummary(true)}
+          className="h-12 w-full max-w-xs"
+        >
+          <Eye className="h-4 w-4 mr-2" />
+          View Saved Workout
+        </Button>
         <Button
           onClick={() => setIsEditing(true)}
           className="h-12 w-full max-w-xs"
@@ -157,8 +168,71 @@ export function DemoTodayWorkout() {
           <Pencil className="h-4 w-4 mr-2" />
           Edit Workout
         </Button>
-        <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={() => { setCompleted(false); setShowFinish(false); }}>
-          Back to Overview
+        <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={() => { setCompleted(false); setShowFinish(false); setShowSavedSummary(false); }}>
+          Back to Today
+        </Button>
+      </div>
+    );
+  }
+
+  // If workout already completed and user is on Today screen, show saved state
+  if (showSavedSummary) {
+    const allExercises = workout.blocks.flatMap((b) => b.exercises);
+    return (
+      <div className="p-4 space-y-5">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowSavedSummary(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Saved Workout</h2>
+            <p className="text-xs text-muted-foreground">
+              {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
+            </p>
+          </div>
+        </div>
+        {sessionRpe && (
+          <div className="rounded-xl border border-border bg-card p-3 text-center">
+            <p className="text-xs text-muted-foreground uppercase">Session RPE</p>
+            <p className="text-xl font-bold text-foreground">{sessionRpe}/10</p>
+          </div>
+        )}
+        <div className="space-y-3">
+          {allExercises.map((ex) => {
+            const setData = savedSetData[ex.exercise_id];
+            return (
+              <div key={ex.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="p-4 border-b border-border">
+                  <p className="font-semibold text-foreground">{ex.exercise_name}</p>
+                  <p className="text-xs text-muted-foreground">{ex.prescribed_sets} × {ex.prescribed_reps}</p>
+                </div>
+                {setData && setData.length > 0 ? (
+                  <div className="divide-y divide-border">
+                    {setData.map((s) => (
+                      <div key={s.set_number} className="flex items-center gap-3 px-4 py-3">
+                        <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
+                        <span className="text-sm font-semibold text-foreground min-w-[60px]">
+                          {s.weight > 0 ? `${s.weight}kg` : "BW"}
+                        </span>
+                        <span className="text-sm text-foreground">× {s.reps}</span>
+                        <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
+                        {s.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 text-xs text-muted-foreground italic">No sets logged</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <Button variant="outline" onClick={() => { setShowSavedSummary(false); setIsEditing(true); }} className="h-12 w-full text-base">
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit Workout
+        </Button>
+        <Button variant="secondary" onClick={() => setShowSavedSummary(false)} className="h-12 w-full text-base">
+          ← Back
         </Button>
       </div>
     );
