@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { AppAuthProvider } from "@/hooks/use-app-auth";
 import { DemoAdminLogs } from "@/components/admin/DemoAdminLogs";
 
 export const Route = createFileRoute("/admin/logs")({
@@ -15,10 +14,8 @@ export const Route = createFileRoute("/admin/logs")({
 
 function AdminLogsPage() {
   return (
-    <AppAuthProvider>
-      <AppShell>
-        <DemoAdminLogs />
-      </AppShell>
-    </AppAuthProvider>
+    <AppShell>
+      <DemoAdminLogs />
+    </AppShell>
   );
 }

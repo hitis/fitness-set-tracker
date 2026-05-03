@@ -1,4 +1,5 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { AppAuthProvider } from "@/hooks/use-app-auth";
 
 import appCss from "../styles.css?url";
 
@@ -68,5 +69,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <AppAuthProvider>
+      <Outlet />
+    </AppAuthProvider>
+  );
 }

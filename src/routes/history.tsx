@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AppShell } from "@/components/AppShell";
-import { AppAuthProvider, useAppAuth } from "@/hooks/use-app-auth";
+import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
+import { AppShell } from "@/components/AppShell"; 
+import { useAppAuth } from "@/hooks/use-app-auth";
 import { DemoWorkoutHistory } from "@/components/member/DemoWorkoutHistory";
 
 export const Route = createFileRoute("/history")({
@@ -14,16 +14,13 @@ export const Route = createFileRoute("/history")({
 });
 
 function HistoryPage() {
-  return (
-    <AppAuthProvider>
-      <HistoryInner />
-    </AppAuthProvider>
-  );
-}
-
-function HistoryInner() {
-  const { user } = useAppAuth();
+  const { user, isLoggedIn } = useAppAuth();
   const navigate = useNavigate();
+
+  if (!isLoggedIn || !user) {
+    return <Navigate to="/" />;
+  }
+
   return (
     <AppShell>
       <DemoWorkoutHistory onBack={() => navigate({ to: "/" })} userId={user?.id} />
