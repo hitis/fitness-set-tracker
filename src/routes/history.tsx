@@ -1,10 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useNavigate } from "@tanstack/react-router";
-import { useAuth } from "@/hooks/use-auth";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { DemoProviderWithRole, DemoProviderAuto, useDemo } from "@/hooks/use-demo";
+import { AppAuthProvider, useAppAuth } from "@/hooks/use-app-auth";
 import { DemoWorkoutHistory } from "@/components/member/DemoWorkoutHistory";
-import { WorkoutHistory } from "@/components/member/WorkoutHistory";
 
 export const Route = createFileRoute("/history")({
   head: () => ({
@@ -17,31 +14,19 @@ export const Route = createFileRoute("/history")({
 });
 
 function HistoryPage() {
-  const { user, role, loading, signOut } = useAuth();
-
-  if (!loading && user && role) {
-    return (
-      <DemoProviderWithRole forceDemo={false} initialRole={role}>
-        <AppShell role={role} onSignOut={signOut}>
-          <WorkoutHistory user={user} />
-        </AppShell>
-      </DemoProviderWithRole>
-    );
-  }
-
   return (
-    <DemoProviderAuto>
-      <DemoHistoryInner />
-    </DemoProviderAuto>
+    <AppAuthProvider>
+      <HistoryInner />
+    </AppAuthProvider>
   );
 }
 
-function DemoHistoryInner() {
-  const demo = useDemo();
+function HistoryInner() {
+  const { user } = useAppAuth();
   const navigate = useNavigate();
   return (
-    <AppShell role={demo.role} onSignOut={() => {}}>
-      <DemoWorkoutHistory onBack={() => navigate({ to: "/" })} />
+    <AppShell>
+      <DemoWorkoutHistory onBack={() => navigate({ to: "/" })} userId={user?.id} />
     </AppShell>
   );
 }

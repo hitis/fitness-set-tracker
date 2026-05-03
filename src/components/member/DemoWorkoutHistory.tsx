@@ -296,7 +296,7 @@ function HistoryDetail({ detail, historyId, onBack, onUpdated }: {
 }
 
 // ─── Main History Component ────────────────────────────────
-export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
+export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
