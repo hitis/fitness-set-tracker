@@ -1,70 +1,162 @@
 import { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star } from "lucide-react";
-import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryExerciseDetail } from "@/hooks/use-demo";
+import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryExerciseDetail, type HistorySetLog } from "@/hooks/use-demo";
 
 function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<HistoryWorkoutDetail>(detail);
+
+  const updateSetField = (exIdx: number, setIdx: number, field: keyof HistorySetLog, value: number | string | boolean | null) => {
+    setEditData(prev => ({
+      ...prev,
+      exercises: prev.exercises.map((ex, ei) => ei !== exIdx ? ex : {
+        ...ex,
+        sets: ex.sets.map((s, si) => si !== setIdx ? s : { ...s, [field]: value })
+      })
+    }));
+  };
+
+  const saveEdits = () => {
+    // Update the global demo data
+    const historyId = Object.entries(DEMO_HISTORY_DETAILS).find(([, d]) => d === detail)?.[0];
+    if (historyId) {
+      DEMO_HISTORY_DETAILS[historyId] = editData;
+      // Update summary RPE
+      const entry = DEMO_MEMBER_HISTORY.find(h => h.id === historyId);
+      if (entry) entry.session_rpe = editData.session_rpe;
+    }
+    Object.assign(detail, editData);
+    setIsEditing(false);
+  };
+
   return (
     <div className="p-4 space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+        <button onClick={() => { setIsEditing(false); onBack(); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h2 className="text-lg font-bold text-foreground capitalize">
-            {detail.training_type.replace("_", " ")}
+          <h2 className="text-lg font-bold text-foreground capitalize flex-1">
+            {editData.training_type.replace("_", " ")}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {format(new Date(detail.workout_date + "T00:00:00"), "EEEE, MMMM d")} · {detail.phase}
+            {format(new Date(editData.workout_date + "T00:00:00"), "EEEE, MMMM d")} · {editData.phase}
           </p>
         </div>
+        {!isEditing && (
+          <button onClick={() => setIsEditing(true)} className="ml-auto flex items-center gap-1 rounded-lg bg-secondary px-3 py-2 text-xs font-medium text-muted-foreground active:scale-95">
+            <Pencil className="h-3 w-3" />
+            Edit
+          </button>
+        )}
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <p className="text-lg font-bold text-foreground">{detail.exercises.length}</p>
+          <p className="text-lg font-bold text-foreground">{editData.exercises.length}</p>
           <p className="text-[10px] text-muted-foreground uppercase">Exercises</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <p className="text-lg font-bold text-foreground">{detail.session_rpe ?? "—"}</p>
+          {isEditing ? (
+            <Input
+              type="number" inputMode="numeric" min="1" max="10"
+              value={editData.session_rpe ?? ""}
+              onChange={(e) => setEditData(prev => ({ ...prev, session_rpe: e.target.value ? parseInt(e.target.value) : null }))}
+              className="h-10 bg-secondary border-0 text-center text-lg font-bold"
+              placeholder="—"
+            />
+          ) : (
+            <p className="text-lg font-bold text-foreground">{editData.session_rpe ?? "—"}</p>
+          )}
           <p className="text-[10px] text-muted-foreground uppercase">RPE</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <p className="text-lg font-bold text-primary">
-            {detail.completed ? <Check className="h-5 w-5 mx-auto" /> : "—"}
+            {editData.completed ? <Check className="h-5 w-5 mx-auto" /> : "—"}
           </p>
           <p className="text-[10px] text-muted-foreground uppercase">Status</p>
         </div>
       </div>
 
-      {detail.notes && (
-        <p className="text-sm text-muted-foreground italic rounded-xl bg-card/50 border border-border p-3">{detail.notes}</p>
+      {isEditing ? (
+        <Textarea
+          value={editData.notes ?? ""}
+          onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value || null }))}
+          className="bg-secondary border-0 text-sm"
+          placeholder="Session notes..."
+          rows={2}
+        />
+      ) : (
+        editData.notes && (
+          <p className="text-sm text-muted-foreground italic rounded-xl bg-card/50 border border-border p-3">{editData.notes}</p>
+        )
       )}
 
       {/* Exercises + Sets */}
       <div className="space-y-4">
-        {detail.exercises.map((ex, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+        {editData.exercises.map((ex, exIdx) => (
+          <div key={exIdx} className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="p-4 border-b border-border">
               <p className="font-semibold text-foreground">{ex.exercise_name}</p>
               <p className="text-xs text-muted-foreground">{ex.prescribed_sets} × {ex.prescribed_reps}</p>
             </div>
             <div className="divide-y divide-border">
-              {ex.sets.map((set) => (
-                <div key={set.set_number} className="flex items-center gap-3 px-4 py-3">
-                  <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
-                  <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                    {set.weight > 0 ? `${set.weight}kg` : "BW"}
-                  </span>
-                  <span className="text-sm text-foreground">× {set.reps}</span>
-                  <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                  {set.pain_flag && (
-                    <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />
-                  )}
-                  {set.notes && (
-                    <span className="text-xs text-muted-foreground italic ml-auto truncate max-w-[80px]">{set.notes}</span>
+              {ex.sets.map((set, setIdx) => (
+                <div key={set.set_number} className="px-4 py-3">
+                  {isEditing ? (
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-muted-foreground">Set {set.set_number}</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted-foreground uppercase">Weight</label>
+                          <Input
+                            type="number" inputMode="decimal" min="0"
+                            value={set.weight}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "weight", parseFloat(e.target.value) || 0)}
+                            className="h-10 bg-secondary border-0 text-center font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground uppercase">Reps</label>
+                          <Input
+                            type="number" inputMode="numeric" min="1"
+                            value={set.reps}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "reps", parseInt(e.target.value) || 0)}
+                            className="h-10 bg-secondary border-0 text-center font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground uppercase">RPE</label>
+                          <Input
+                            type="number" inputMode="numeric" min="1" max="10"
+                            value={set.rpe}
+                            onChange={(e) => updateSetField(exIdx, setIdx, "rpe", parseInt(e.target.value) || 0)}
+                            className="h-10 bg-secondary border-0 text-center font-bold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
+                      <span className="text-sm font-semibold text-foreground min-w-[60px]">
+                        {set.weight > 0 ? `${set.weight}kg` : "BW"}
+                      </span>
+                      <span className="text-sm text-foreground">× {set.reps}</span>
+                      <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
+                      {set.pain_flag && (
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />
+                      )}
+                      {set.notes && (
+                        <span className="text-xs text-muted-foreground italic ml-auto truncate max-w-[80px]">{set.notes}</span>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -72,6 +164,17 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
           </div>
         ))}
       </div>
+
+      {isEditing && (
+        <div className="space-y-2">
+          <Button onClick={saveEdits} className="h-12 w-full text-base font-bold">
+            Save Changes
+          </Button>
+          <Button variant="secondary" onClick={() => { setEditData(detail); setIsEditing(false); }} className="h-12 w-full text-base">
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

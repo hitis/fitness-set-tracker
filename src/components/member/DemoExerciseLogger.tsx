@@ -527,6 +527,39 @@ export function DemoExerciseLogger({
         ))}
       </div>
 
+      {/* Save All Sets */}
+      {sets.some(s => !s.saved && (s.weight || s.reps)) && (
+        <Button
+          onClick={() => {
+            // Validate all unsaved sets with data, save valid ones
+            let anyError = false;
+            setSets((prev) => {
+              const updated = prev.map((s) => {
+                if (s.saved) return s;
+                if (!s.weight && !s.reps) return s;
+                const w = s.weight ? parseFloat(s.weight) : null;
+                const r = s.reps ? parseInt(s.reps) : null;
+                const rpe = s.rpe ? parseInt(s.rpe) : null;
+                const errors: string[] = [];
+                if (!s.weight && !s.reps) errors.push("Enter weight and reps");
+                if (s.weight && (w === null || w <= 0)) errors.push("Weight must be > 0");
+                if (s.reps && (r === null || r <= 0)) errors.push("Reps must be > 0");
+                if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be 1-10");
+                if (errors.length > 0) { anyError = true; return { ...s, errors, deviationWarnings: [] }; }
+                return { ...s, saved: true, errors: [], deviationWarnings: [] };
+              });
+              onSaveSets(updated.filter((s) => s.saved).length);
+              notifySetDataChange(updated);
+              return updated;
+            });
+          }}
+          className="h-14 w-full text-base font-bold"
+          size="lg"
+        >
+          Save All Sets
+        </Button>
+      )}
+
       <Button variant="secondary" onClick={onBack} className="h-14 w-full text-base font-semibold active:scale-[0.98]">
         ← Back to Workout
       </Button>
