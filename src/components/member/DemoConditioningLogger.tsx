@@ -4,22 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Check, AlertTriangle, X } from "lucide-react";
 import type { DemoExercise, BlockType, PreviousEntry, ConditioningLogEntry } from "@/hooks/use-demo";
+import {
+  sanitizeDecimal,
+  sanitizeInteger,
+  validateConditioningEntry,
+  checkWeightDeviation,
+} from "@/lib/workout-validation";
 
 const PAIN_AREAS = ["wrist", "shoulder", "lower back", "hip", "knee", "ankle", "other"];
-
-function sanitizeDecimal(val: string): string {
-  let result = "";
-  let hasDot = false;
-  for (const ch of val) {
-    if (ch >= "0" && ch <= "9") result += ch;
-    else if (ch === "." && !hasDot) { result += ch; hasDot = true; }
-  }
-  return result;
-}
-
-function sanitizeInteger(val: string): string {
-  return val.replace(/[^0-9]/g, "");
-}
 
 export function DemoConditioningLogger({
   exercise,
@@ -48,33 +40,34 @@ export function DemoConditioningLogger({
   const [errors, setErrors] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [deviationWarnings, setDeviationWarnings] = useState<string[]>([]);
+  const [deviationDismissed, setDeviationDismissed] = useState(false);
 
   const showRounds = blockType === "amrap" || blockType === "emom";
 
-  const validate = (): string[] => {
-    const errs: string[] = [];
-    if (weight) {
-      const w = parseFloat(weight);
-      if (isNaN(w) || w <= 0) errs.push("Weight must be a positive number");
-    }
-    if (rpe) {
-      const r = parseInt(rpe);
-      if (isNaN(r) || r < 1 || r > 10) errs.push("RPE must be between 1 and 10");
-    }
-    if (rounds) {
-      const rn = parseInt(rounds);
-      if (isNaN(rn) || rn <= 0) errs.push("Rounds must be a positive number");
-    }
-    return errs;
-  };
-
   const handleSave = () => {
-    const validationErrors = validate();
+    const validationErrors = validateConditioningEntry(weight, rpe, rounds);
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
+      setDeviationWarnings([]);
       return;
     }
     setErrors([]);
+
+    // Check weight deviation against previous
+    if (weight && !deviationDismissed && previous) {
+      const refs: { label: string; value: number }[] = [];
+      if (previous.sets.length > 0 && previous.sets[0].weight > 0) {
+        refs.push({ label: "last time", value: previous.sets[0].weight });
+      }
+      const warnings = checkWeightDeviation(weight, refs);
+      if (warnings.length > 0) {
+        setDeviationWarnings(warnings.map(w => w.message));
+        return;
+      }
+    }
+    setDeviationWarnings([]);
+
     const entry: ConditioningLogEntry = {
       exercise_id: exercise.exercise_id,
       completed,
@@ -98,7 +91,7 @@ export function DemoConditioningLogger({
   };
 
   const handleSaveAndExit = () => {
-    const validationErrors = validate();
+    const validationErrors = validateConditioningEntry(weight, rpe, rounds);
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
       setShowUnsavedWarning(false);
@@ -110,6 +103,13 @@ export function DemoConditioningLogger({
   };
 
   const markDirty = () => { setDirty(true); setErrors([]); };
+
+  const confirmDeviation = () => {
+    setDeviationDismissed(true);
+    setDeviationWarnings([]);
+    // Re-trigger save
+    setTimeout(() => handleSave(), 50);
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -265,6 +265,20 @@ export function DemoConditioningLogger({
           />
         )}
       </div>
+
+      {/* Deviation Warnings */}
+      {deviationWarnings.length > 0 && (
+        <div className="rounded-lg bg-amber-900/20 border border-amber-500/30 p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-400">Weight deviation detected</p>
+          {deviationWarnings.map((w, i) => (
+            <p key={i} className="text-xs text-amber-400/80">{w}</p>
+          ))}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={confirmDeviation}>Confirm & Save</Button>
+            <Button size="sm" variant="secondary" onClick={() => setDeviationWarnings([])}>Edit</Button>
+          </div>
+        </div>
+      )}
 
       {!saved || dirty ? (
         <Button onClick={handleSave} className="h-14 w-full text-base font-bold" size="lg">
