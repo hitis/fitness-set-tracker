@@ -4,6 +4,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, Info, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import type { DemoExercise, PreviousEntry } from "@/hooks/use-demo";
+import {
+  sanitizeDecimal,
+  sanitizeInteger,
+  validateWeight,
+  validateReps,
+  validateRpe,
+  validateSet,
+  checkWeightDeviation,
+} from "@/lib/workout-validation";
 
 export interface SetLog {
   set_number: number;
@@ -26,38 +35,7 @@ interface FieldErrors {
   rpe?: string;
 }
 
-function validateField(field: "weight" | "reps" | "rpe", value: string): string | undefined {
-  if (!value) return undefined;
-  if (field === "weight") {
-    const n = parseFloat(value);
-    if (isNaN(n) || n <= 0) return "Must be > 0";
-  }
-  if (field === "reps") {
-    const n = parseInt(value);
-    if (isNaN(n) || n <= 0) return "Must be > 0";
-  }
-  if (field === "rpe") {
-    const n = parseInt(value);
-    if (isNaN(n) || n < 1 || n > 10) return "1–10";
-  }
-  return undefined;
-}
-
 const PAIN_AREAS = ["wrist", "hand", "shoulder", "elbow", "lower back", "hip", "knee", "ankle", "other"];
-
-function sanitizeDecimal(val: string): string {
-  let result = "";
-  let hasDot = false;
-  for (const ch of val) {
-    if (ch >= "0" && ch <= "9") result += ch;
-    else if (ch === "." && !hasDot) { result += ch; hasDot = true; }
-  }
-  return result;
-}
-
-function sanitizeInteger(val: string): string {
-  return val.replace(/[^0-9]/g, "");
-}
 
 function NumInput({ value, onChange, placeholder, mode, error, disabled }: {
   value: string; onChange: (v: string) => void; placeholder: string; mode: "decimal" | "integer"; error?: string; disabled?: boolean;
@@ -174,9 +152,9 @@ export function DemoExerciseLogger({
     const map: Record<number, FieldErrors> = {};
     for (const s of sets) {
       const errs: FieldErrors = {};
-      errs.weight = validateField("weight", s.weight);
-      errs.reps = validateField("reps", s.reps);
-      errs.rpe = validateField("rpe", s.rpe);
+      errs.weight = validateWeight(s.weight);
+      errs.reps = validateReps(s.reps);
+      errs.rpe = validateRpe(s.rpe);
       if (errs.weight || errs.reps || errs.rpe) map[s.set_number] = errs;
     }
     return map;
@@ -198,14 +176,15 @@ export function DemoExerciseLogger({
       const updated = prev.map((s) => {
         if (s.saved && !s.dirty) return s;
         if (!s.weight && !s.reps) return s;
-        const w = s.weight ? parseFloat(s.weight) : null;
-        const r = s.reps ? parseInt(s.reps) : null;
-        const rpe = s.rpe ? parseInt(s.rpe) : null;
-        const errors: string[] = [];
-        if (s.weight && (w === null || w <= 0)) errors.push("Weight must be > 0");
-        if (s.reps && (r === null || r <= 0)) errors.push("Reps must be > 0");
-        if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be 1-10");
+        const errors = validateSet(s.weight, s.reps, s.rpe);
         if (errors.length > 0) return { ...s, errors, deviationWarnings: [] };
+        // Check deviations
+        const refs: { label: string; value: number }[] = [];
+        if (lastSessionAvg !== null) refs.push({ label: "last session avg", value: lastSessionAvg });
+        const deviationWarnings = checkWeightDeviation(s.weight, refs);
+        if (deviationWarnings.length > 0 && !dismissedWarnings.has(s.set_number)) {
+          return { ...s, errors: [], deviationWarnings: deviationWarnings.map(d => d.message) };
+        }
         return { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] };
       });
       onSaveSets(updated.filter((s) => s.saved).length);
@@ -239,36 +218,26 @@ export function DemoExerciseLogger({
       const current = prev.find((s) => s.set_number === setNum);
       if (!current) return prev;
 
-      // Full validation
+      // Full validation using shared utility
       const errors: string[] = [];
-      const w = current.weight ? parseFloat(current.weight) : null;
-      const r = current.reps ? parseInt(current.reps) : null;
-      const rpe = current.rpe ? parseInt(current.rpe) : null;
-
       if (!current.weight && !current.reps) errors.push("Enter weight and reps to save");
-      if (current.weight && (w === null || w <= 0)) errors.push("Weight must be a positive number");
-      if (current.reps && (r === null || r <= 0)) errors.push("Reps must be greater than 0");
-      if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be between 1 and 10");
+      const setErrors = validateSet(current.weight, current.reps, current.rpe);
+      errors.push(...setErrors);
 
       if (errors.length > 0) {
         return prev.map((s) => s.set_number === setNum ? { ...s, errors, deviationWarnings: [] } : s);
       }
 
-      // Deviation warnings
-      const deviationWarnings: string[] = [];
+      // Deviation warnings using shared utility
+      const w = parseFloat(current.weight);
       if (w && w > 0 && !dismissedWarnings.has(setNum)) {
+        const refs: { label: string; value: number }[] = [];
         const prevSet = prev.find((s) => s.set_number === setNum - 1 && s.saved);
-        if (prevSet?.weight) {
-          const pv = parseFloat(prevSet.weight);
-          if (pv > 0 && Math.abs(w - pv) / pv > 0.3) {
-            deviationWarnings.push(`Large weight change vs previous set (${pv}kg → ${w}kg)`);
-          }
-        }
-        if (lastSessionAvg !== null && lastSessionAvg > 0 && Math.abs(w - lastSessionAvg) / lastSessionAvg > 0.3) {
-          deviationWarnings.push(`Weight is ${w > lastSessionAvg ? "significantly higher" : "significantly lower"} than last session avg (${Math.round(lastSessionAvg)}kg)`);
-        }
+        if (prevSet?.weight) refs.push({ label: `previous set (${prevSet.weight}kg)`, value: parseFloat(prevSet.weight) });
+        if (lastSessionAvg !== null) refs.push({ label: "last session avg", value: lastSessionAvg });
+        const deviationWarnings = checkWeightDeviation(current.weight, refs);
         if (deviationWarnings.length > 0) {
-          return prev.map((s) => s.set_number === setNum ? { ...s, errors: [], deviationWarnings } : s);
+          return prev.map((s) => s.set_number === setNum ? { ...s, errors: [], deviationWarnings: deviationWarnings.map(d => d.message) } : s);
         }
       }
 
@@ -592,14 +561,15 @@ export function DemoExerciseLogger({
               const updated = prev.map((s) => {
                 if (s.saved && !s.dirty) return s;
                 if (!s.weight && !s.reps) return s;
-                const w = s.weight ? parseFloat(s.weight) : null;
-                const r = s.reps ? parseInt(s.reps) : null;
-                const rpe = s.rpe ? parseInt(s.rpe) : null;
-                const errors: string[] = [];
-                if (s.weight && (w === null || w <= 0)) errors.push("Weight must be > 0");
-                if (s.reps && (r === null || r <= 0)) errors.push("Reps must be > 0");
-                if (rpe !== null && (rpe < 1 || rpe > 10)) errors.push("RPE must be 1-10");
+                const errors = validateSet(s.weight, s.reps, s.rpe);
                 if (errors.length > 0) return { ...s, errors, deviationWarnings: [] };
+                // Check deviations
+                const refs: { label: string; value: number }[] = [];
+                if (lastSessionAvg !== null) refs.push({ label: "last session avg", value: lastSessionAvg });
+                const deviationWarnings = checkWeightDeviation(s.weight, refs);
+                if (deviationWarnings.length > 0 && !dismissedWarnings.has(s.set_number)) {
+                  return { ...s, errors: [], deviationWarnings: deviationWarnings.map(d => d.message) };
+                }
                 return { ...s, saved: true, dirty: false, errors: [], deviationWarnings: [] };
               });
               onSaveSets(updated.filter((s) => s.saved).length);
