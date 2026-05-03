@@ -149,7 +149,7 @@ export function DemoTodayWorkout({ onBack }: { onBack?: () => void }) {
                   {entry.sets.map((s) => (
                     <div key={s.set_number} className="flex items-center gap-2 text-sm">
                       <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
-                      <span className="font-semibold text-foreground">{s.weight > 0 ? `${s.weight}kg` : "BW"} × {s.reps}</span>
+                      <span className="font-semibold text-foreground">{s.weight > 0 ? `${s.weight}kg` : "—"} × {s.reps}</span>
                       <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
                     </div>
                   ))}
@@ -315,11 +315,16 @@ export function DemoTodayWorkout({ onBack }: { onBack?: () => void }) {
                         <div key={s.set_number} className="flex items-center gap-3 px-4 py-3">
                           <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
                           <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                            {s.weight > 0 ? `${s.weight}kg` : "BW"}
+                            {s.weight > 0 ? `${s.weight}kg` : "—"}
                           </span>
                           <span className="text-sm text-foreground">× {s.reps}</span>
                           <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
-                          {s.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
+                          {s.pain_flag && (
+                            <span className="flex items-center gap-0.5 text-destructive ml-auto">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              <span className="text-[10px] capitalize">{s.pain_areas?.join(", ") || "Pain"}</span>
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
