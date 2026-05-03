@@ -155,7 +155,8 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3">
+                    <>
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
                       <span className="text-sm font-semibold text-foreground min-w-[60px]">
                         {set.weight > 0 ? `${set.weight}kg` : "—"}
@@ -181,6 +182,7 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
                     {!set.pain_flag && set.notes && (
                       <p className="text-xs text-muted-foreground italic mt-1">{set.notes}</p>
                     )}
+                    </>
                   )}
                 </div>
               ))}
