@@ -437,7 +437,7 @@ export function DemoTodayWorkout() {
       )}
 
       {/* Blocks */}
-      {!completed && <div className="space-y-6">
+      {!completed && (<div className="space-y-6">
         {workout.blocks.map((block) => {
           const isConditioning = CONDITIONING_TYPES.includes(block.block_type);
           return (
@@ -494,15 +494,15 @@ export function DemoTodayWorkout() {
             </div>
           );
         })}
-      </div>
+      </div>)}
 
-      <Button
+      {!completed && <Button
         onClick={() => setShowFinish(true)}
         className="h-14 w-full text-base font-bold"
         size="lg"
       >
         Finish Workout
-      </Button>
+      </Button>}
     </div>
   );
 }
