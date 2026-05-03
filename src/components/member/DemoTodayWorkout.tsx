@@ -312,18 +312,23 @@ export function DemoTodayWorkout({ onBack }: { onBack?: () => void }) {
                   ) : setData && setData.length > 0 ? (
                     <div className="divide-y divide-border">
                       {setData.map((s) => (
-                        <div key={s.set_number} className="flex items-center gap-3 px-4 py-3">
-                          <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
-                          <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                            {s.weight > 0 ? `${s.weight}kg` : "—"}
-                          </span>
-                          <span className="text-sm text-foreground">× {s.reps}</span>
-                          <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
-                          {s.pain_flag && (
-                            <span className="flex items-center gap-0.5 text-destructive ml-auto">
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                              <span className="text-[10px] capitalize">{s.pain_areas?.join(", ") || "Pain"}</span>
+                        <div key={s.set_number} className="px-4 py-3 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 text-xs font-bold text-muted-foreground shrink-0">S{s.set_number}</span>
+                            <span className="text-sm font-semibold text-foreground min-w-[60px]">
+                              {s.weight > 0 ? `${s.weight}kg` : "—"}
                             </span>
+                            <span className="text-sm text-foreground">× {s.reps}</span>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">RPE {s.rpe}</span>
+                          </div>
+                          {s.pain_flag && s.pain_areas && s.pain_areas.length > 0 && (
+                            <div className="flex items-center gap-1.5 pl-8 text-destructive">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              <span className="text-xs capitalize">Pain: {s.pain_areas.join(", ")}</span>
+                            </div>
+                          )}
+                          {s.notes && (
+                            <p className="text-xs text-muted-foreground italic pl-8">Note: {s.notes}</p>
                           )}
                         </div>
                       ))}
