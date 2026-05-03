@@ -1,58 +1,131 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
-import { DEMO_TODAY_WORKOUT, DEMO_EXERCISE_HISTORY, addDemoHistoryEntry, DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, type DemoBlock, type DemoExercise, type BlockType, type PreviousEntry } from "@/hooks/use-demo";
+import {
+  DEMO_TODAY_WORKOUT,
+  DEMO_EXERCISE_HISTORY,
+  addDemoHistoryEntry,
+  DEMO_MEMBER_HISTORY,
+  DEMO_HISTORY_DETAILS,
+  getOrCreateWorkoutLog,
+  updateWorkoutLog,
+  type DemoBlock,
+  type DemoExercise,
+  type BlockType,
+  type PreviousEntry,
+  type WorkoutLog,
+  type WorkoutLogSet,
+  type ConditioningLogEntry,
+} from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
 import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
+const DEMO_USER_ID = "demo-user-001";
 
-export function DemoTodayWorkout() {
+export function DemoTodayWorkout({ onBack }: { onBack?: () => void }) {
   const workout = DEMO_TODAY_WORKOUT;
+
+  // Central log — single source of truth
+  const [log, setLog] = useState<WorkoutLog>(() =>
+    getOrCreateWorkoutLog(DEMO_USER_ID, workout.id, workout.workout_date)
+  );
+
+  // Sync log to module store on every change
+  const syncLog = useCallback((updatedLog: WorkoutLog) => {
+    setLog(updatedLog);
+    updateWorkoutLog(updatedLog);
+  }, []);
+
   const [selectedExercise, setSelectedExercise] = useState<{ exercise: DemoExercise; block: DemoBlock } | null>(null);
   const [exerciseHistoryView, setExerciseHistoryView] = useState<{ exercise: DemoExercise; history: PreviousEntry[] } | null>(null);
-  const [completed, setCompleted] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
-  const [sessionRpe, setSessionRpe] = useState("");
-  const [sessionNotes, setSessionNotes] = useState("");
-  const [loggedSets, setLoggedSets] = useState<Record<string, number>>({});
-  const [completedCondExercises, setCompletedCondExercises] = useState<Set<string>>(new Set());
-  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
-  const [rpeError, setRpeError] = useState("");
-  const [savedSetData, setSavedSetData] = useState<Record<string, Array<{ set_number: number; weight: number; reps: number; rpe: number; notes: string | null; pain_flag: boolean; pain_areas: string[] }>>>({});
   const [showSavedSummary, setShowSavedSummary] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
+  const [rpeError, setRpeError] = useState("");
+  // Local edit buffers for session RPE/notes (synced on submit)
+  const [sessionRpe, setSessionRpe] = useState(log.session_rpe?.toString() ?? "");
+  const [sessionNotes, setSessionNotes] = useState(log.session_notes ?? "");
 
-  // Compute stats
+  const completed = log.status === "completed";
+
+  // Compute stats from central log
   const allExercises = useMemo(() => workout.blocks.flatMap((b) => b.exercises), [workout]);
-  const totalPrescribedSets = useMemo(() => allExercises.reduce((sum, ex) => sum + ex.prescribed_sets, 0), [allExercises]);
+
+  const totalPrescribedSets = useMemo(() => {
+    let total = 0;
+    for (const block of workout.blocks) {
+      for (const ex of block.exercises) {
+        const isCond = CONDITIONING_TYPES.includes(block.block_type);
+        total += isCond ? 1 : ex.prescribed_sets; // conditioning counts as 1 required item
+      }
+    }
+    return total;
+  }, [workout]);
+
   const totalLoggedSets = useMemo(() => {
-    return Object.values(loggedSets).reduce((a, b) => a + b, 0) + completedCondExercises.size;
-  }, [loggedSets, completedCondExercises]);
+    let count = 0;
+    for (const block of workout.blocks) {
+      for (const ex of block.exercises) {
+        const isCond = CONDITIONING_TYPES.includes(block.block_type);
+        if (isCond) {
+          const entry = log.conditioning_logs[ex.exercise_id];
+          if (entry?.completed) count += 1;
+        } else {
+          count += (log.strength_logs[ex.exercise_id]?.length ?? 0);
+        }
+      }
+    }
+    return count;
+  }, [log, workout]);
+
   const completionPct = totalPrescribedSets > 0 ? Math.round((totalLoggedSets / totalPrescribedSets) * 100) : 0;
 
   const getExerciseStatus = (ex: DemoExercise, block: DemoBlock): "completed" | "partial" | "not_started" => {
-    const isConditioning = CONDITIONING_TYPES.includes(block.block_type);
-    if (isConditioning) return completedCondExercises.has(ex.exercise_id) ? "completed" : "not_started";
-    const logged = loggedSets[ex.exercise_id] || 0;
+    const isCond = CONDITIONING_TYPES.includes(block.block_type);
+    if (isCond) {
+      return log.conditioning_logs[ex.exercise_id]?.completed ? "completed" : "not_started";
+    }
+    const logged = log.strength_logs[ex.exercise_id]?.length ?? 0;
     if (logged >= ex.prescribed_sets) return "completed";
     if (logged > 0) return "partial";
     return "not_started";
   };
 
-  // Simple insight for post-submit
   const getInsight = (): string => {
     if (completionPct >= 100) return "You completed all prescribed sets 💪";
     if (completionPct >= 75) return `You completed ${completionPct}% of your workout — solid effort!`;
     return `${completionPct}% completed — every rep counts!`;
   };
 
-  // Exercise-wise full history view
+  // ─── Save handlers ─────────────────────────────────────────
+  const handleStrengthSave = (exerciseId: string, sets: WorkoutLogSet[]) => {
+    const updated: WorkoutLog = {
+      ...log,
+      status: log.status === "not_started" ? "in_progress" : log.status,
+      strength_logs: { ...log.strength_logs, [exerciseId]: sets },
+    };
+    syncLog(updated);
+  };
+
+  const handleConditioningSave = (data: ConditioningLogEntry) => {
+    const updated: WorkoutLog = {
+      ...log,
+      status: log.status === "not_started" ? "in_progress" : log.status,
+      conditioning_logs: { ...log.conditioning_logs, [data.exercise_id]: data },
+    };
+    syncLog(updated);
+  };
+
+  // ─── Sub-views ─────────────────────────────────────────────
+
+  // Exercise history view
   if (exerciseHistoryView) {
     const { exercise, history } = exerciseHistoryView;
     return (
@@ -90,45 +163,47 @@ export function DemoTodayWorkout() {
     );
   }
 
+  // Selected exercise → logger
   if (selectedExercise) {
-    const isConditioning = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
+    const isCond = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
     const history = DEMO_EXERCISE_HISTORY[selectedExercise.exercise.exercise_id] || [];
-    if (isConditioning) {
+    if (isCond) {
       return (
         <DemoConditioningLogger
           exercise={selectedExercise.exercise}
           blockType={selectedExercise.block.block_type}
           previous={history.length > 0 ? history[0] : null}
+          initialData={log.conditioning_logs[selectedExercise.exercise.exercise_id] ?? null}
           onBack={() => setSelectedExercise(null)}
-          onComplete={() => {
-            setCompletedCondExercises((prev) => new Set(prev).add(selectedExercise.exercise.exercise_id));
+          onSaveData={(data) => {
+            handleConditioningSave(data);
             setSelectedExercise(null);
           }}
         />
       );
     }
+    const existingSets = log.strength_logs[selectedExercise.exercise.exercise_id];
     return (
       <DemoExerciseLogger
         exercise={selectedExercise.exercise}
         previousHistory={history}
-        onBack={() => {
-          setSelectedExercise(null);
-        }}
+        onBack={() => setSelectedExercise(null)}
         onSaveSets={(count) => {
-          setLoggedSets((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: count }));
+          // count is handled internally, we use onSetDataChange for actual data
         }}
         onSetDataChange={(sets) => {
-          setSavedSetData((prev) => ({ ...prev, [selectedExercise.exercise.exercise_id]: sets }));
+          handleStrengthSave(selectedExercise.exercise.exercise_id, sets);
         }}
         onViewExerciseHistory={() => {
           setSelectedExercise(null);
           setExerciseHistoryView({ exercise: selectedExercise.exercise, history });
         }}
-        initialSetData={savedSetData[selectedExercise.exercise.exercise_id]}
+        initialSetData={existingSets}
       />
     );
   }
 
+  // ─── Completed state (post-submit) ─────────────────────────
   if (completed) {
     if (isEditing) {
       return (
@@ -143,6 +218,10 @@ export function DemoTodayWorkout() {
           <div className="space-y-2">
             {workout.blocks.map((block) => block.exercises.map((ex) => {
               const status = getExerciseStatus(ex, block);
+              const isCond = CONDITIONING_TYPES.includes(block.block_type);
+              const loggedCount = isCond
+                ? (log.conditioning_logs[ex.exercise_id]?.completed ? 1 : 0)
+                : (log.strength_logs[ex.exercise_id]?.length ?? 0);
               return (
                 <button
                   key={ex.id}
@@ -159,7 +238,7 @@ export function DemoTodayWorkout() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {savedSetData[ex.exercise_id]?.length || loggedSets[ex.exercise_id] || 0}/{ex.prescribed_sets} sets
+                      {loggedCount}/{isCond ? 1 : ex.prescribed_sets} {isCond ? "block" : "sets"}
                     </p>
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -167,15 +246,109 @@ export function DemoTodayWorkout() {
               );
             }))}
           </div>
-          <Button variant="secondary" onClick={() => setIsEditing(false)} className="h-12 w-full text-base">
+          <Button variant="secondary" onClick={() => {
+            // After editing, re-sync history
+            syncHistoryFromLog(log);
+            setIsEditing(false);
+          }} className="h-12 w-full text-base">
             Done Editing
           </Button>
         </div>
       );
     }
 
+    // Saved summary detail
+    if (showSavedSummary) {
+      return (
+        <div className="p-4 space-y-5">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowSavedSummary(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Saved Workout</h2>
+              <p className="text-xs text-muted-foreground">
+                {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
+              </p>
+            </div>
+          </div>
+          {log.session_rpe && (
+            <div className="rounded-xl border border-border bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground uppercase">Session RPE</p>
+              <p className="text-xl font-bold text-foreground">{log.session_rpe}/10</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            {allExercises.map((ex) => {
+              const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+              const isCond = CONDITIONING_TYPES.includes(block.block_type);
+              const setData = log.strength_logs[ex.exercise_id];
+              const condData = log.conditioning_logs[ex.exercise_id];
+              return (
+                <div key={ex.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="p-4 border-b border-border">
+                    <p className="font-semibold text-foreground">{ex.exercise_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isCond ? block.block_type.replace("_", " ") : `${ex.prescribed_sets} × ${ex.prescribed_reps}`}
+                    </p>
+                  </div>
+                  {isCond ? (
+                    condData ? (
+                      <div className="px-4 py-3 space-y-1">
+                        <p className="text-sm text-foreground">{condData.completed ? "✓ Completed" : "✗ Not completed"}</p>
+                        {condData.weight != null && <p className="text-xs text-muted-foreground">Weight: {condData.weight}kg</p>}
+                        {condData.rounds != null && <p className="text-xs text-muted-foreground">Rounds: {condData.rounds}</p>}
+                        {condData.rpe != null && <p className="text-xs text-muted-foreground">RPE: {condData.rpe}/10</p>}
+                        {condData.notes && <p className="text-xs text-muted-foreground italic">{condData.notes}</p>}
+                        {condData.pain_areas.length > 0 && (
+                          <p className="text-xs text-destructive flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> {condData.pain_areas.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-3 text-xs text-muted-foreground italic">Not logged</div>
+                    )
+                  ) : setData && setData.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {setData.map((s) => (
+                        <div key={s.set_number} className="flex items-center gap-3 px-4 py-3">
+                          <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
+                          <span className="text-sm font-semibold text-foreground min-w-[60px]">
+                            {s.weight > 0 ? `${s.weight}kg` : "BW"}
+                          </span>
+                          <span className="text-sm text-foreground">× {s.reps}</span>
+                          <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
+                          {s.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 text-xs text-muted-foreground italic">No sets logged</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <Button variant="outline" onClick={() => { setShowSavedSummary(false); setIsEditing(true); }} className="h-12 w-full text-base">
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit Workout
+          </Button>
+          <Button variant="secondary" onClick={() => setShowSavedSummary(false)} className="h-12 w-full text-base">
+            ← Back
+          </Button>
+        </div>
+      );
+    }
+
+    // Completed landing
     return (
       <div className="p-4 space-y-5">
+        {onBack && (
+          <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
         <div className="flex flex-col items-center py-6 space-y-4">
           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/20">
             <Trophy className="h-10 w-10 text-primary" />
@@ -188,14 +361,13 @@ export function DemoTodayWorkout() {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl border border-border bg-card p-3 text-center">
             <p className="text-lg font-bold text-foreground">{totalLoggedSets}</p>
             <p className="text-[10px] text-muted-foreground uppercase">Sets</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-3 text-center">
-            <p className="text-lg font-bold text-foreground">{sessionRpe || "—"}</p>
+            <p className="text-lg font-bold text-foreground">{log.session_rpe ?? "—"}</p>
             <p className="text-[10px] text-muted-foreground uppercase">RPE</p>
           </div>
           <div className="rounded-xl border border-border bg-card p-3 text-center">
@@ -204,13 +376,11 @@ export function DemoTodayWorkout() {
           </div>
         </div>
 
-        {/* Insight */}
         <div className="rounded-xl border border-border bg-card/50 p-4 flex items-center gap-3">
           <TrendingUp className="h-5 w-5 text-primary shrink-0" />
           <p className="text-sm text-foreground">{getInsight()}</p>
         </div>
 
-        {/* Actions */}
         <div className="space-y-2">
           <Button onClick={() => setShowSavedSummary(true)} className="h-12 w-full text-base">
             <Eye className="h-4 w-4 mr-2" />
@@ -230,78 +400,13 @@ export function DemoTodayWorkout() {
     );
   }
 
-  // If workout already completed and user is on Today screen, show saved state
-  if (showSavedSummary) {
-    const allExercises = workout.blocks.flatMap((b) => b.exercises);
-    return (
-      <div className="p-4 space-y-5">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowSavedSummary(false)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-foreground">Saved Workout</h2>
-            <p className="text-xs text-muted-foreground">
-              {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
-            </p>
-          </div>
-        </div>
-        {sessionRpe && (
-          <div className="rounded-xl border border-border bg-card p-3 text-center">
-            <p className="text-xs text-muted-foreground uppercase">Session RPE</p>
-            <p className="text-xl font-bold text-foreground">{sessionRpe}/10</p>
-          </div>
-        )}
-        <div className="space-y-3">
-          {allExercises.map((ex) => {
-            const setData = savedSetData[ex.exercise_id];
-            return (
-              <div key={ex.id} className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="p-4 border-b border-border">
-                  <p className="font-semibold text-foreground">{ex.exercise_name}</p>
-                  <p className="text-xs text-muted-foreground">{ex.prescribed_sets} × {ex.prescribed_reps}</p>
-                </div>
-                {setData && setData.length > 0 ? (
-                  <div className="divide-y divide-border">
-                    {setData.map((s) => (
-                      <div key={s.set_number} className="flex items-center gap-3 px-4 py-3">
-                        <span className="w-8 text-xs font-bold text-muted-foreground">S{s.set_number}</span>
-                        <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                          {s.weight > 0 ? `${s.weight}kg` : "BW"}
-                        </span>
-                        <span className="text-sm text-foreground">× {s.reps}</span>
-                        <span className="text-xs text-muted-foreground">RPE {s.rpe}</span>
-                        {s.pain_flag && <AlertTriangle className="h-3.5 w-3.5 text-destructive ml-auto" />}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-4 py-3 text-xs text-muted-foreground italic">No sets logged</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <Button variant="outline" onClick={() => { setShowSavedSummary(false); setIsEditing(true); }} className="h-12 w-full text-base">
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit Workout
-        </Button>
-        <Button variant="secondary" onClick={() => setShowSavedSummary(false)} className="h-12 w-full text-base">
-          ← Back
-        </Button>
-      </div>
-    );
-  }
-
+  // ─── Finish Workout screen ─────────────────────────────────
   if (showFinish) {
-    // Check completeness
-    const allExercises = workout.blocks.flatMap((b) => b.exercises);
     const incompleteExercises = allExercises.filter((ex) => {
-      const isConditioning = CONDITIONING_TYPES.includes(
-        workout.blocks.find((b) => b.exercises.some((e) => e.id === ex.id))?.block_type || "accessory"
-      );
-      if (isConditioning) return !completedCondExercises.has(ex.exercise_id);
-      return (loggedSets[ex.exercise_id] || 0) === 0;
+      const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+      const isCond = CONDITIONING_TYPES.includes(block.block_type);
+      if (isCond) return !log.conditioning_logs[ex.exercise_id]?.completed;
+      return (log.strength_logs[ex.exercise_id]?.length ?? 0) === 0;
     });
 
     const handleSubmit = () => {
@@ -317,89 +422,17 @@ export function DemoTodayWorkout() {
         return;
       }
 
-      // Add to history immediately
-      // Prevent duplicate: check if today's date already has an entry
-      const todayDate = workout.workout_date;
-      const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
-      const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
+      // Update central log
+      const updatedLog: WorkoutLog = {
+        ...log,
+        status: "completed",
+        session_rpe: rpeNum,
+        session_notes: sessionNotes || null,
+      };
+      syncLog(updatedLog);
 
-      if (existingIdx >= 0) {
-        // Update existing entry
-        DEMO_MEMBER_HISTORY[existingIdx] = {
-          ...DEMO_MEMBER_HISTORY[existingIdx],
-          session_rpe: rpeNum,
-          completed: true,
-          exercise_count: totalLoggedSets,
-        };
-        DEMO_HISTORY_DETAILS[entryId] = {
-          workout_date: todayDate,
-          training_type: workout.training_type,
-          phase: workout.phase,
-          session_rpe: rpeNum,
-          notes: sessionNotes || null,
-          completed: true,
-          exercises: allExercises.map((ex) => {
-            const setData = savedSetData[ex.exercise_id];
-            return {
-              exercise_name: ex.exercise_name,
-              prescribed_sets: ex.prescribed_sets,
-              prescribed_reps: ex.prescribed_reps,
-              sets: setData
-                ? setData.map(s => ({
-                    set_number: s.set_number,
-                    weight: s.weight,
-                    reps: s.reps,
-                    rpe: s.rpe,
-                    notes: s.notes,
-                    pain_flag: s.pain_flag,
-                    pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
-                  }))
-                : [],
-            };
-          }),
-        };
-      } else {
-        addDemoHistoryEntry(
-        {
-          id: entryId,
-          workout_date: todayDate,
-          training_type: workout.training_type,
-          phase: workout.phase,
-          session_rpe: rpeNum,
-          completed: true,
-          exercise_count: totalLoggedSets,
-        },
-        {
-          workout_date: todayDate,
-          training_type: workout.training_type,
-          phase: workout.phase,
-          session_rpe: rpeNum,
-          notes: sessionNotes || null,
-          completed: true,
-          exercises: allExercises.map((ex) => {
-            const setData = savedSetData[ex.exercise_id];
-            return {
-              exercise_name: ex.exercise_name,
-              prescribed_sets: ex.prescribed_sets,
-              prescribed_reps: ex.prescribed_reps,
-              sets: setData
-                ? setData.map(s => ({
-                    set_number: s.set_number,
-                    weight: s.weight,
-                    reps: s.reps,
-                    rpe: s.rpe,
-                    notes: s.notes,
-                    pain_flag: s.pain_flag,
-                    pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
-                  }))
-                : [],
-            };
-          }),
-        }
-      );
-      }
-
-      setCompleted(true);
+      // Sync to history
+      syncHistoryFromLog(updatedLog);
     };
 
     return (
@@ -430,10 +463,7 @@ export function DemoTodayWorkout() {
           <div>
             <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Session RPE (1-10)</label>
             <Input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max="10"
+              type="number" inputMode="numeric" min="1" max="10"
               value={sessionRpe}
               onChange={(e) => { setSessionRpe(e.target.value); setRpeError(""); }}
               className="mt-1 h-14 bg-secondary border-0 text-center text-2xl font-bold"
@@ -459,10 +489,18 @@ export function DemoTodayWorkout() {
     );
   }
 
+  // ─── Main workout logging view ─────────────────────────────
   return (
     <div className="p-4 space-y-5">
+      {/* Back button */}
+      {onBack && (
+        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+      )}
+
       {/* Workout Header */}
-      <div className={`rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 ${completed ? "border-primary/30" : "border-primary/20"}`}>
+      <div className="rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 border-primary/20">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
         </p>
@@ -473,55 +511,29 @@ export function DemoTodayWorkout() {
           <Badge className="bg-primary/20 text-primary border-0 text-xs font-semibold">
             {workout.phase}
           </Badge>
-          {completed && (
-            <Badge className="bg-primary/20 text-primary border-0 text-xs font-semibold">
-              <Check className="h-3 w-3 mr-1" />
-              Completed
-            </Badge>
-          )}
         </div>
         {workout.notes && (
           <p className="text-sm text-muted-foreground italic">{workout.notes}</p>
         )}
       </div>
 
-      {/* Already completed state */}
-      {completed && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-              <Check className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground">Today's workout saved</p>
-              <p className="text-xs text-muted-foreground">
-                {totalLoggedSets} sets logged · {completionPct}% complete
-                {sessionRpe && ` · RPE ${sessionRpe}/10`}
-              </p>
-            </div>
+      {/* Progress bar */}
+      {totalLoggedSets > 0 && (
+        <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Progress</span>
+            <span className="font-bold text-primary">{completionPct}%</span>
           </div>
-          <div className="space-y-2">
-            <Button onClick={() => setShowSavedSummary(true)} className="h-12 w-full text-base">
-              <Eye className="h-4 w-4 mr-2" />
-              View Saved Workout
-            </Button>
-            <Button variant="outline" onClick={() => setIsEditing(true)} className="h-12 w-full text-base">
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit Workout
-            </Button>
-            <Link to="/history" className="block">
-              <Button variant="secondary" className="h-12 w-full text-base">
-                View History
-              </Button>
-            </Link>
+          <div className="h-2 rounded-full bg-secondary overflow-hidden">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(completionPct, 100)}%` }} />
           </div>
         </div>
       )}
 
       {/* Blocks */}
-      {!completed && (<div className="space-y-6">
+      <div className="space-y-6">
         {workout.blocks.map((block) => {
-          const isConditioning = CONDITIONING_TYPES.includes(block.block_type);
+          const isCond = CONDITIONING_TYPES.includes(block.block_type);
           return (
             <div key={block.id} className="space-y-2">
               <div className="flex items-center gap-2 px-1">
@@ -540,7 +552,9 @@ export function DemoTodayWorkout() {
               <div className="space-y-2">
                 {block.exercises.map((ex) => {
                   const status = getExerciseStatus(ex, block);
-                  const logged = loggedSets[ex.exercise_id] || 0;
+                  const loggedCount = isCond
+                    ? (log.conditioning_logs[ex.exercise_id]?.completed ? 1 : 0)
+                    : (log.strength_logs[ex.exercise_id]?.length ?? 0);
                   return (
                     <button
                       key={ex.id}
@@ -549,23 +563,27 @@ export function DemoTodayWorkout() {
                         status === "completed" ? "border-primary/30 bg-primary/5" : status === "partial" ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-card"
                       }`}
                     >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
-                          status === "completed" ? "bg-primary text-primary-foreground" : status === "partial" ? "bg-amber-500/20 text-amber-400" : "bg-secondary text-muted-foreground"
-                        }`}
-                      >
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
+                        status === "completed" ? "bg-primary text-primary-foreground" : status === "partial" ? "bg-amber-500/20 text-amber-400" : "bg-secondary text-muted-foreground"
+                      }`}>
                         {status === "completed" ? <Check className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
                         <div className="flex gap-2 text-xs text-muted-foreground">
-                          <span>Sets: {ex.prescribed_sets}</span>
-                          <span>Reps: {ex.prescribed_reps}</span>
+                          {isCond ? (
+                            <span>{block.block_type.replace("_", " ")}</span>
+                          ) : (
+                            <>
+                              <span>Sets: {ex.prescribed_sets}</span>
+                              <span>Reps: {ex.prescribed_reps}</span>
+                            </>
+                          )}
                         </div>
                       </div>
-                      {!isConditioning && logged > 0 && (
+                      {loggedCount > 0 && (
                         <span className={`text-xs font-bold ${status === "completed" ? "text-primary" : "text-amber-400"}`}>
-                          {logged}/{ex.prescribed_sets}
+                          {loggedCount}/{isCond ? 1 : ex.prescribed_sets}
                         </span>
                       )}
                     </button>
@@ -575,15 +593,96 @@ export function DemoTodayWorkout() {
             </div>
           );
         })}
-      </div>)}
+      </div>
 
-      {!completed && <Button
+      <Button
         onClick={() => setShowFinish(true)}
         className="h-14 w-full text-base font-bold"
         size="lg"
       >
         Finish Workout
-      </Button>}
+      </Button>
     </div>
   );
+}
+
+// ─── Helper: sync current log to history ─────────────────────
+function syncHistoryFromLog(log: WorkoutLog) {
+  const todayDate = log.workout_date;
+  const workout = DEMO_TODAY_WORKOUT;
+  const allExercises = workout.blocks.flatMap((b) => b.exercises);
+
+  // Calculate total logged
+  let totalLogged = 0;
+  for (const block of workout.blocks) {
+    for (const ex of block.exercises) {
+      const isCond = CONDITIONING_TYPES.includes(block.block_type);
+      if (isCond) {
+        if (log.conditioning_logs[ex.exercise_id]?.completed) totalLogged++;
+      } else {
+        totalLogged += (log.strength_logs[ex.exercise_id]?.length ?? 0);
+      }
+    }
+  }
+
+  const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
+  const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
+
+  const detailExercises = allExercises.map((ex) => {
+    const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+    const isCond = CONDITIONING_TYPES.includes(block.block_type);
+    const setData = log.strength_logs[ex.exercise_id];
+    const condData = log.conditioning_logs[ex.exercise_id];
+    return {
+      exercise_name: ex.exercise_name,
+      prescribed_sets: isCond ? 1 : ex.prescribed_sets,
+      prescribed_reps: ex.prescribed_reps,
+      sets: isCond
+        ? (condData?.completed
+          ? [{ set_number: 1, weight: condData.weight ?? 0, reps: condData.rounds ?? 1, rpe: condData.rpe ?? 0, notes: condData.notes, pain_flag: condData.pain_areas.length > 0, pain_area: condData.pain_areas.join(", ") || null }]
+          : [])
+        : (setData ?? []).map(s => ({
+            set_number: s.set_number,
+            weight: s.weight,
+            reps: s.reps,
+            rpe: s.rpe,
+            notes: s.notes,
+            pain_flag: s.pain_flag,
+            pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
+          })),
+    };
+  });
+
+  const detail = {
+    workout_date: todayDate,
+    training_type: workout.training_type,
+    phase: workout.phase,
+    session_rpe: log.session_rpe,
+    notes: log.session_notes,
+    completed: log.status === "completed",
+    exercises: detailExercises,
+  };
+
+  if (existingIdx >= 0) {
+    DEMO_MEMBER_HISTORY[existingIdx] = {
+      ...DEMO_MEMBER_HISTORY[existingIdx],
+      session_rpe: log.session_rpe,
+      completed: log.status === "completed",
+      exercise_count: totalLogged,
+    };
+    DEMO_HISTORY_DETAILS[entryId] = detail;
+  } else {
+    addDemoHistoryEntry(
+      {
+        id: entryId,
+        workout_date: todayDate,
+        training_type: workout.training_type,
+        phase: workout.phase,
+        session_rpe: log.session_rpe,
+        completed: log.status === "completed",
+        exercise_count: totalLogged,
+      },
+      detail,
+    );
+  }
 }
