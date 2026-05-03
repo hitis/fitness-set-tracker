@@ -1,45 +1,160 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { DEMO_MEMBER_HISTORY, DEMO_HISTORY_DETAILS, onHistoryUpdate, type HistoryWorkoutDetail, type HistoryExerciseDetail, type HistorySetLog } from "@/hooks/use-demo";
+import {
+  DEMO_MEMBER_HISTORY,
+  DEMO_HISTORY_DETAILS,
+  onHistoryUpdate,
+  type HistoryWorkoutDetail,
+  type HistoryExerciseDetail,
+  type HistorySetLog,
+  type WorkoutLogSet,
+} from "@/hooks/use-demo";
+import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { useNavigate } from "@tanstack/react-router";
 
-function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBack: () => void }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<HistoryWorkoutDetail>(detail);
-  const [expandedPain, setExpandedPain] = useState<string | null>(null);
-
-  const updateSetField = (exIdx: number, setIdx: number, field: keyof HistorySetLog, value: number | string | boolean | null) => {
-    setEditData(prev => ({
-      ...prev,
-      exercises: prev.exercises.map((ex, ei) => ei !== exIdx ? ex : {
-        ...ex,
-        sets: ex.sets.map((s, si) => si !== setIdx ? s : { ...s, [field]: value })
-      })
-    }));
+// ─── Conversion helpers ────────────────────────────────────
+function toFakeExercise(ex: HistoryExerciseDetail, idx: number) {
+  return {
+    id: `hist-ex-${idx}`,
+    exercise_id: `hist-exd-${idx}`,
+    exercise_name: ex.exercise_name,
+    prescribed_sets: ex.prescribed_sets,
+    prescribed_reps: ex.prescribed_reps,
+    notes: null as string | null,
+    sort_order: idx,
   };
+}
+
+function toWorkoutLogSets(sets: HistorySetLog[]): WorkoutLogSet[] {
+  return sets.map((s) => ({
+    set_number: s.set_number,
+    weight: s.weight,
+    reps: s.reps,
+    rpe: s.rpe,
+    notes: s.notes,
+    pain_flag: s.pain_flag,
+    pain_areas: s.pain_area ? s.pain_area.split(", ").filter(Boolean) : [],
+  }));
+}
+
+function fromWorkoutLogSets(sets: WorkoutLogSet[]): HistorySetLog[] {
+  return sets.map((s) => ({
+    set_number: s.set_number,
+    weight: s.weight,
+    reps: s.reps,
+    rpe: s.rpe,
+    notes: s.notes,
+    pain_flag: s.pain_flag,
+    pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
+  }));
+}
+
+// ─── Set Row Display ───────────────────────────────────────
+function SetRowDisplay({ set }: { set: HistorySetLog }) {
+  return (
+    <div className="px-4 py-3 space-y-1">
+      <div className="flex items-center gap-3">
+        <span className="w-8 text-xs font-bold text-muted-foreground shrink-0">S{set.set_number}</span>
+        <span className="text-sm font-semibold text-foreground min-w-[60px]">{set.weight > 0 ? `${set.weight}kg` : "—"}</span>
+        <span className="text-sm text-foreground">× {set.reps}</span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">RPE {set.rpe}</span>
+      </div>
+      {set.pain_flag && set.pain_area && (
+        <div className="flex items-center gap-1.5 pl-8 text-destructive">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span className="text-xs capitalize">Pain: {set.pain_area}</span>
+        </div>
+      )}
+      {set.notes && (
+        <p className="text-xs text-muted-foreground italic pl-8">Note: {set.notes}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── History Detail ────────────────────────────────────────
+function HistoryDetail({ detail, historyId, onBack, onUpdated }: {
+  detail: HistoryWorkoutDetail;
+  historyId: string;
+  onBack: () => void;
+  onUpdated: () => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<HistoryWorkoutDetail>(() => JSON.parse(JSON.stringify(detail)));
+  const [selectedExIdx, setSelectedExIdx] = useState<number | null>(null);
+  const [sessionRpeError, setSessionRpeError] = useState("");
+  const [editSessionRpe, setEditSessionRpe] = useState(editData.session_rpe?.toString() ?? "");
+  const [editSessionNotes, setEditSessionNotes] = useState(editData.notes ?? "");
 
   const saveEdits = () => {
-    // Update the global demo data
-    const historyId = Object.entries(DEMO_HISTORY_DETAILS).find(([, d]) => d === detail)?.[0];
-    if (historyId) {
-      DEMO_HISTORY_DETAILS[historyId] = editData;
-      // Update summary RPE
-      const entry = DEMO_MEMBER_HISTORY.find(h => h.id === historyId);
-      if (entry) entry.session_rpe = editData.session_rpe;
+    if (editSessionRpe) {
+      const rpe = parseInt(editSessionRpe);
+      if (isNaN(rpe) || rpe < 1 || rpe > 10) {
+        setSessionRpeError("RPE must be 1–10");
+        return;
+      }
     }
-    Object.assign(detail, editData);
+    setSessionRpeError("");
+
+    const finalData: HistoryWorkoutDetail = {
+      ...editData,
+      session_rpe: editSessionRpe ? parseInt(editSessionRpe) : null,
+      notes: editSessionNotes || null,
+    };
+
+    DEMO_HISTORY_DETAILS[historyId] = finalData;
+    const entry = DEMO_MEMBER_HISTORY.find(h => h.id === historyId);
+    if (entry) {
+      entry.session_rpe = finalData.session_rpe;
+      entry.exercise_count = finalData.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+    }
+    setEditData(finalData);
     setIsEditing(false);
+    onUpdated();
   };
+
+  const handleStrengthSave = useCallback((exIdx: number, sets: WorkoutLogSet[]) => {
+    setEditData(prev => ({
+      ...prev,
+      exercises: prev.exercises.map((ex, i) => i !== exIdx ? ex : {
+        ...ex,
+        sets: fromWorkoutLogSets(sets),
+      }),
+    }));
+  }, []);
+
+  // Exercise selected for editing → open full logger
+  if (selectedExIdx !== null) {
+    const ex = editData.exercises[selectedExIdx];
+    if (ex) {
+      const fakeExercise = toFakeExercise(ex, selectedExIdx);
+      const existingSets = toWorkoutLogSets(ex.sets);
+      const capturedIdx = selectedExIdx;
+      return (
+        <DemoExerciseLogger
+          exercise={fakeExercise}
+          previousHistory={[]}
+          onBack={() => setSelectedExIdx(null)}
+          onSaveSets={() => {}}
+          onSetDataChange={(sets) => {
+            handleStrengthSave(capturedIdx, sets);
+            setSelectedExIdx(null);
+          }}
+          initialSetData={existingSets}
+        />
+      );
+    }
+  }
 
   return (
     <div className="p-4 space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={() => { setIsEditing(false); onBack(); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
@@ -68,15 +183,16 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
           {isEditing ? (
             <Input
               type="number" inputMode="numeric" min="1" max="10"
-              value={editData.session_rpe ?? ""}
-              onChange={(e) => setEditData(prev => ({ ...prev, session_rpe: e.target.value ? parseInt(e.target.value) : null }))}
-              className="h-10 bg-secondary border-0 text-center text-lg font-bold"
+              value={editSessionRpe}
+              onChange={(e) => { setEditSessionRpe(e.target.value); setSessionRpeError(""); }}
+              className={`h-10 bg-secondary border-0 text-center text-lg font-bold ${sessionRpeError ? "border-2 border-destructive" : ""}`}
               placeholder="—"
             />
           ) : (
             <p className="text-lg font-bold text-foreground">{editData.session_rpe ?? "—"}</p>
           )}
           <p className="text-[10px] text-muted-foreground uppercase">RPE</p>
+          {sessionRpeError && <p className="text-[9px] text-destructive mt-0.5">{sessionRpeError}</p>}
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <p className="text-lg font-bold text-primary">
@@ -98,8 +214,8 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
 
       {isEditing ? (
         <Textarea
-          value={editData.notes ?? ""}
-          onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value || null }))}
+          value={editSessionNotes}
+          onChange={(e) => setEditSessionNotes(e.target.value)}
           className="bg-secondary border-0 text-sm"
           placeholder="Session notes..."
           rows={2}
@@ -112,91 +228,65 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
 
       {/* Exercises + Sets */}
       <div className="space-y-4">
-        {editData.exercises.map((ex, exIdx) => (
-          <div key={exIdx} className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="p-4 border-b border-border">
-              <p className="font-semibold text-foreground">{ex.exercise_name}</p>
-              <p className="text-xs text-muted-foreground">{ex.prescribed_sets} × {ex.prescribed_reps}</p>
-            </div>
-            <div className="divide-y divide-border">
-              {ex.sets.map((set, setIdx) => (
-                <div key={set.set_number} className="px-4 py-3">
-                  {isEditing ? (
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-muted-foreground">Set {set.set_number}</span>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="text-[10px] text-muted-foreground uppercase">Weight</label>
-                          <Input
-                            type="number" inputMode="decimal"
-                            value={set.weight || ""}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "weight", e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
-                            className="h-10 bg-secondary border-0 text-center font-bold"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-muted-foreground uppercase">Reps</label>
-                          <Input
-                            type="number" inputMode="numeric"
-                            value={set.reps || ""}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "reps", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
-                            className="h-10 bg-secondary border-0 text-center font-bold"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-muted-foreground uppercase">RPE</label>
-                          <Input
-                            type="number" inputMode="numeric"
-                            value={set.rpe || ""}
-                            onChange={(e) => updateSetField(exIdx, setIdx, "rpe", e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
-                            className="h-10 bg-secondary border-0 text-center font-bold"
-                          />
-                        </div>
-                      </div>
+        {isEditing ? (
+          <>
+            <p className="text-sm text-muted-foreground">Tap an exercise to edit sets, notes, and pain areas.</p>
+            <div className="space-y-2">
+              {editData.exercises.map((ex, exIdx) => {
+                const loggedCount = ex.sets.length;
+                const status = loggedCount >= ex.prescribed_sets ? "completed" : loggedCount > 0 ? "partial" : "not_started";
+                return (
+                  <button
+                    key={exIdx}
+                    onClick={() => setSelectedExIdx(exIdx)}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-all active:scale-[0.98] ${
+                      status === "completed" ? "border-primary/30 bg-primary/5" : "border-border bg-card"
+                    }`}
+                  >
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                      status === "completed" ? "bg-primary text-primary-foreground" : status === "partial" ? "bg-amber-500/20 text-amber-400" : "bg-secondary text-muted-foreground"
+                    }`}>
+                      {status === "completed" ? <Check className="h-4 w-4" /> : status === "partial" ? "…" : "—"}
                     </div>
-                  ) : (
-                    <>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
-                      <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                        {set.weight > 0 ? `${set.weight}kg` : "—"}
-                      </span>
-                      <span className="text-sm text-foreground">× {set.reps}</span>
-                      <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                      {set.pain_flag && (
-                        <button
-                          onClick={() => setExpandedPain(expandedPain === `${exIdx}-${setIdx}` ? null : `${exIdx}-${setIdx}`)}
-                          className="flex items-center gap-1 ml-auto text-destructive"
-                        >
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-medium capitalize">{set.pain_area || "Pain"}</span>
-                        </button>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">{ex.exercise_name}</p>
+                      <p className="text-xs text-muted-foreground">{loggedCount}/{ex.prescribed_sets} sets</p>
                     </div>
-                    {expandedPain === `${exIdx}-${setIdx}` && set.pain_flag && (
-                      <div className="mt-2 rounded-lg bg-destructive/10 border border-destructive/20 p-2 space-y-1">
-                        <p className="text-xs text-destructive font-medium">Pain: {set.pain_area || "Not specified"}</p>
-                        {set.notes && <p className="text-xs text-muted-foreground italic">{set.notes}</p>}
-                      </div>
-                    )}
-                    {!set.pain_flag && set.notes && (
-                      <p className="text-xs text-muted-foreground italic mt-1">{set.notes}</p>
-                    )}
-                    </>
-                  )}
-                </div>
-              ))}
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        ))}
+          </>
+        ) : (
+          editData.exercises.map((ex, exIdx) => (
+            <div key={exIdx} className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <p className="font-semibold text-foreground">{ex.exercise_name}</p>
+                <p className="text-xs text-muted-foreground">{ex.prescribed_sets} × {ex.prescribed_reps}</p>
+              </div>
+              <div className="divide-y divide-border">
+                {ex.sets.map((set) => (
+                  <SetRowDisplay key={set.set_number} set={set} />
+                ))}
+                {ex.sets.length === 0 && (
+                  <div className="px-4 py-3 text-xs text-muted-foreground italic">No sets logged</div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {isEditing && (
         <div className="space-y-2">
-          <Button onClick={saveEdits} className="h-12 w-full text-base font-bold">
-            Save Changes
-          </Button>
-          <Button variant="secondary" onClick={() => { setEditData(detail); setIsEditing(false); }} className="h-12 w-full text-base">
+          <Button onClick={saveEdits} className="h-12 w-full text-base font-bold">Save Changes</Button>
+          <Button variant="secondary" onClick={() => {
+            setEditData(JSON.parse(JSON.stringify(detail)));
+            setEditSessionRpe(detail.session_rpe?.toString() ?? "");
+            setEditSessionNotes(detail.notes ?? "");
+            setIsEditing(false);
+          }} className="h-12 w-full text-base">
             Cancel
           </Button>
         </div>
@@ -205,6 +295,7 @@ function HistoryDetail({ detail, onBack }: { detail: HistoryWorkoutDetail; onBac
   );
 }
 
+// ─── Main History Component ────────────────────────────────
 export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -216,7 +307,6 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
     return onHistoryUpdate(() => forceUpdate((n) => n + 1));
   }, []);
 
-  // All unique exercise names for suggestions
   const allExerciseNames = useMemo(() => {
     const names = new Set<string>();
     for (const detail of Object.values(DEMO_HISTORY_DETAILS)) {
@@ -225,7 +315,6 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
     return Array.from(names).sort();
   }, []);
 
-  // Filtered suggestions based on search
   const suggestions = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return allExerciseNames.filter((n) =>
@@ -233,7 +322,7 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
     ).slice(0, 5);
   }, [searchQuery, allExerciseNames]);
 
-  // Exercise history drill-down — grouped by exercise
+  // Exercise history drill-down
   if (exerciseView) {
     const sessions: { date: string; detail: HistoryWorkoutDetail; exercise: HistoryExerciseDetail; historyId: string }[] = [];
     for (const h of DEMO_MEMBER_HISTORY) {
@@ -276,20 +365,7 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
                 </div>
                 <div className="divide-y divide-border">
                   {s.exercise.sets.map((set) => (
-                    <div key={set.set_number} className="flex items-center gap-3 px-4 py-3">
-                      <span className="w-8 text-xs font-bold text-muted-foreground">S{set.set_number}</span>
-                      <span className="text-sm font-semibold text-foreground min-w-[60px]">
-                        {set.weight > 0 ? `${set.weight}kg` : "—"}
-                      </span>
-                      <span className="text-sm text-foreground">× {set.reps}</span>
-                      <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                      {set.pain_flag && (
-                        <span className="flex items-center gap-0.5 text-destructive ml-auto">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          <span className="text-[10px] capitalize">{set.pain_area || "Pain"}</span>
-                        </span>
-                      )}
-                    </div>
+                    <SetRowDisplay key={set.set_number} set={set} />
                   ))}
                 </div>
               </div>
@@ -300,9 +376,8 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  // Search results — grouped by exercise name
+  // Search results
   if (searchQuery.trim() && suggestions.length === 0) {
-    // Build exercise-grouped results
     const exerciseGroups: Record<string, { date: string; sets: HistoryExerciseDetail["sets"]; historyId: string; detail: HistoryWorkoutDetail }[]> = {};
     for (const h of DEMO_MEMBER_HISTORY) {
       const detail = DEMO_HISTORY_DETAILS[h.id];
@@ -320,7 +395,6 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
       return (
         <div className="p-4 space-y-4">
           <h2 className="text-lg font-bold text-foreground">Workout History</h2>
-          {/* Search bar */}
           <div className="relative" role="search">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -351,19 +425,7 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
                         {format(new Date(entry.date + "T00:00:00"), "MMM d")}
                       </p>
                       {entry.sets.map((set) => (
-                        <div key={set.set_number} className="flex items-center gap-2 text-sm">
-                          <span className="w-8 text-xs text-muted-foreground">S{set.set_number}</span>
-                          <span className="font-semibold text-foreground">
-                            {set.weight > 0 ? `${set.weight}kg` : "—"} × {set.reps}
-                          </span>
-                          <span className="text-xs text-muted-foreground">RPE {set.rpe}</span>
-                          {set.pain_flag && (
-                            <span className="flex items-center gap-0.5 text-destructive">
-                              <AlertTriangle className="h-3 w-3" />
-                              <span className="text-[10px] capitalize">{set.pain_area || "Pain"}</span>
-                            </span>
-                          )}
-                        </div>
+                        <SetRowDisplay key={set.set_number} set={set} />
                       ))}
                     </div>
                   ))}
@@ -379,7 +441,7 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
   if (selectedId) {
     const detail = DEMO_HISTORY_DETAILS[selectedId];
     if (detail) {
-      return <HistoryDetail detail={detail} onBack={() => setSelectedId(null)} />;
+      return <HistoryDetail detail={detail} historyId={selectedId} onBack={() => setSelectedId(null)} onUpdated={() => forceUpdate(n => n + 1)} />;
     }
   }
 
@@ -397,7 +459,6 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
         <h2 className="text-lg font-bold text-foreground">Workout History</h2>
       </div>
 
-      {/* Search */}
       {DEMO_MEMBER_HISTORY.length > 0 && (
         <div className="relative" role="search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -413,7 +474,6 @@ export function DemoWorkoutHistory({ onBack }: { onBack?: () => void }) {
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
           )}
-          {/* Suggestions dropdown */}
           {searchQuery.trim() && suggestions.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-xl border border-border bg-card shadow-lg overflow-hidden">
               {suggestions.map((name) => (
