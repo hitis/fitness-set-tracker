@@ -5,12 +5,22 @@ import { Dumbbell, Phone, Lock, UserPlus, ArrowLeft } from "lucide-react";
 import { useAppAuth, type UserRole } from "@/hooks/use-app-auth";
 
 export function MobileLogin() {
-  const { login, register, selectRole, user, needsRoleSelect } = useAppAuth();
+  const { login, register, selectRole, user, needsRoleSelect, loading: authLoading } = useAppAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [mobile, setMobile] = useState("");
   const [passcode, setPasscode] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isTrainer, setIsTrainer] = useState(false);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   // ─── Role Selector ────────────────────────────────────────
   if (needsRoleSelect && user) {
@@ -51,10 +61,12 @@ export function MobileLogin() {
 
   // ─── Register Form ────────────────────────────────────────
   if (mode === "register") {
-    const handleRegister = (e: React.FormEvent) => {
+    const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
       setError("");
-      const result = register(name, mobile);
+      setLoading(true);
+      const result = await register(name, mobile, isTrainer);
+      setLoading(false);
       if (!result.success) setError(result.error || "Registration failed.");
     };
 
@@ -96,9 +108,23 @@ export function MobileLogin() {
               </div>
               <p className="text-[11px] text-muted-foreground">Your passcode will be the last 4 digits of your number.</p>
             </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsTrainer(!isTrainer)}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  isTrainer ? "bg-amber-600 text-white" : "bg-secondary text-muted-foreground"
+                }`}
+              >
+                {isTrainer ? "✓ Trainer" : "I'm a Trainer"}
+              </button>
+              <span className="text-[11px] text-muted-foreground">
+                {isTrainer ? "You'll get trainer + member access" : "Default: member access"}
+              </span>
+            </div>
             {error && <p className="text-sm text-destructive font-medium">{error}</p>}
-            <Button type="submit" className="h-14 w-full text-base font-bold" size="lg">
-              Register
+            <Button type="submit" className="h-14 w-full text-base font-bold" size="lg" disabled={loading}>
+              {loading ? "Registering..." : "Register"}
             </Button>
           </form>
           <p className="text-center">
@@ -117,10 +143,12 @@ export function MobileLogin() {
   }
 
   // ─── Login Form ───────────────────────────────────────────
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const result = login(mobile, passcode);
+    setLoading(true);
+    const result = await login(mobile, passcode);
+    setLoading(false);
     if (!result.success) setError(result.error || "Login failed.");
   };
 
@@ -172,8 +200,8 @@ export function MobileLogin() {
 
           {error && <p className="text-sm text-destructive font-medium">{error}</p>}
 
-          <Button type="submit" className="h-14 w-full text-base font-bold shadow-lg shadow-primary/20" size="lg">
-            Login
+          <Button type="submit" className="h-14 w-full text-base font-bold shadow-lg shadow-primary/20" size="lg" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </Button>
         </form>
 
@@ -188,12 +216,10 @@ export function MobileLogin() {
         </div>
 
         <div className="rounded-xl bg-card border border-border p-4 space-y-2">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Demo Accounts</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">How to Login</p>
           <div className="space-y-1.5 text-xs text-muted-foreground">
-            <p><span className="font-semibold text-foreground">Shubham</span> — 9999999999 / 9999 (All roles)</p>
-            <p><span className="font-semibold text-foreground">Tester One</span> — 9000000001 / 0001 (Member)</p>
-            <p><span className="font-semibold text-foreground">Tester Two</span> — 9000000002 / 0002 (Member)</p>
-            <p><span className="font-semibold text-foreground">Trainer Demo</span> — 9000000003 / 0003 (Trainer)</p>
+            <p>Register with your mobile number. Passcode = last 4 digits.</p>
+            <p>Select <strong>"I'm a Trainer"</strong> during registration for trainer access.</p>
           </div>
         </div>
       </div>

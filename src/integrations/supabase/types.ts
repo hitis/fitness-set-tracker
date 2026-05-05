@@ -289,6 +289,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      has_trainer_or_admin_role: {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "member"
