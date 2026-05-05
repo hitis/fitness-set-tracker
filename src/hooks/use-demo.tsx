@@ -245,11 +245,13 @@ export const DEMO_EXERCISE_HISTORY: Record<string, PreviousEntry[]> = {
   ],
 };
 
-export const DEMO_RECENT_WORKOUTS = [
-  { id: "w-1", workout_date: daysAgo(2), training_type: "upper_body", phase: "strength", published: true, notes: null },
-  { id: "w-2", workout_date: daysAgo(4), training_type: "lower_body", phase: "hypertrophy", published: true, notes: null },
-  { id: "w-3", workout_date: daysAgo(6), training_type: "full_body", phase: "strength", published: true, notes: null },
+export const DEMO_RECENT_WORKOUTS: TrainerWorkout[] = [
+  { id: "w-1", workout_date: daysAgo(2), training_type: "upper_body", phase: "strength", status: "published", notes: null, blocks: [], created_at: daysAgo(2), updated_at: daysAgo(2) },
+  { id: "w-2", workout_date: daysAgo(4), training_type: "lower_body", phase: "hypertrophy", status: "published", notes: null, blocks: [], created_at: daysAgo(4), updated_at: daysAgo(4) },
+  { id: "w-3", workout_date: daysAgo(6), training_type: "full_body", phase: "strength", status: "published", notes: null, blocks: [], created_at: daysAgo(6), updated_at: daysAgo(6) },
 ];
+// Seed recent workouts into the store
+DEMO_RECENT_WORKOUTS.forEach(w => _trainerWorkouts.set(w.id, w));
 
 export interface HistorySetLog {
   set_number: number;
