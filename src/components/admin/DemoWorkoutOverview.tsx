@@ -132,9 +132,11 @@ export function DemoWorkoutOverview({ summary, onBack }: { summary: AdminWorkout
             <div key={block.id} className="rounded-xl border border-border bg-card p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{block.name}</p>
-                <Badge variant="outline" className="text-[10px] capitalize border-border">
-                  {block.block_type.replace("_", " ")}
-                </Badge>
+                {block.name.toLowerCase().replace(/\s+/g, "_") !== block.block_type && (
+                  <Badge variant="outline" className="text-[10px] capitalize border-border">
+                    {block.block_type.replace("_", " ")}
+                  </Badge>
+                )}
               </div>
               {block.exercises.map((ex) => (
                 <p key={ex.id} className="text-xs text-muted-foreground pl-2">
