@@ -78,15 +78,64 @@ const DEMO_BLOCKS: DemoBlock[] = [
   },
 ];
 
-export const DEMO_TODAY_WORKOUT = {
+export interface TrainerWorkout {
+  id: string;
+  workout_date: string;
+  training_type: string;
+  phase: string;
+  notes: string | null;
+  status: "draft" | "published";
+  blocks: DemoBlock[];
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Shared Trainer Workout Store ────────────────────────────
+const _trainerWorkouts: Map<string, TrainerWorkout> = new Map();
+let _workoutStoreListeners: (() => void)[] = [];
+
+export function onWorkoutStoreUpdate(cb: () => void) {
+  _workoutStoreListeners.push(cb);
+  return () => { _workoutStoreListeners = _workoutStoreListeners.filter(l => l !== cb); };
+}
+function notifyWorkoutStoreUpdate() { _workoutStoreListeners.forEach(cb => cb()); }
+
+export function saveTrainerWorkout(w: TrainerWorkout): void {
+  _trainerWorkouts.set(w.id, { ...w, updated_at: new Date().toISOString() });
+  notifyWorkoutStoreUpdate();
+}
+
+export function getTrainerWorkout(id: string): TrainerWorkout | null {
+  return _trainerWorkouts.get(id) ?? null;
+}
+
+export function getAllTrainerWorkouts(): TrainerWorkout[] {
+  return Array.from(_trainerWorkouts.values()).sort((a, b) => b.workout_date.localeCompare(a.workout_date));
+}
+
+export function getPublishedWorkoutForDate(date: string): TrainerWorkout | null {
+  for (const w of _trainerWorkouts.values()) {
+    if (w.workout_date === date && w.status === "published") return w;
+  }
+  return null;
+}
+
+// Seed the default workout as published
+const _seededWorkout: TrainerWorkout = {
   id: DEMO_WORKOUT_ID,
   workout_date: new Date().toISOString().slice(0, 10),
   training_type: "lower_body",
   phase: "strength",
   notes: "Week 3 — push intensity. Track RPE carefully.",
-  published: true,
+  status: "published",
   blocks: DEMO_BLOCKS,
+  created_at: "2025-01-01T00:00:00Z",
+  updated_at: new Date().toISOString(),
 };
+_trainerWorkouts.set(_seededWorkout.id, _seededWorkout);
+
+// Legacy compat export
+export const DEMO_TODAY_WORKOUT = _seededWorkout;
 
 // Previous performance: last 3 entries per exercise
 export interface PreviousSetEntry {
