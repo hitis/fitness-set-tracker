@@ -181,6 +181,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   // Compute stats from central log
   const allExercises = demoWorkout.blocks.flatMap((b) => b.exercises);
 
+  const totalPrescribedSets = useMemo(() => {
     let total = 0;
     for (const block of demoWorkout.blocks) {
       for (const ex of block.exercises) {
@@ -191,6 +192,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     return total;
   }, [demoWorkout]);
 
+  const totalLoggedSets = useMemo(() => {
     let count = 0;
     for (const block of demoWorkout.blocks) {
       for (const ex of block.exercises) {
