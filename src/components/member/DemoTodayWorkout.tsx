@@ -574,9 +574,11 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
                 <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                   {block.name}
                 </h3>
-                <Badge variant="outline" className="text-[10px] capitalize border-border">
-                  {block.block_type.replace("_", " ")}
-                </Badge>
+                {block.name.toLowerCase().replace(/\s+/g, "_") !== block.block_type && (
+                  <Badge variant="outline" className="text-[10px] capitalize border-border">
+                    {block.block_type.replace("_", " ")}
+                  </Badge>
+                )}
                 <div className="h-px flex-1 bg-border" />
               </div>
               {block.notes && (
