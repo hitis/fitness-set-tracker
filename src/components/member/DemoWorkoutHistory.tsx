@@ -6,16 +6,60 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  DEMO_MEMBER_HISTORY,
-  DEMO_HISTORY_DETAILS,
-  onHistoryUpdate,
-  type HistoryWorkoutDetail,
-  type HistoryExerciseDetail,
   type HistorySetLog,
   type WorkoutLogSet,
 } from "@/hooks/use-demo";
+import {
+  loadUserHistory,
+  loadHistoryDetail,
+  upsertSession,
+  type HistoryEntry,
+  type HistoryDetailData,
+} from "@/lib/supabase-data";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { useNavigate } from "@tanstack/react-router";
+
+interface HistoryExerciseDetail {
+  exercise_name: string;
+  prescribed_sets: number;
+  prescribed_reps: string;
+  sets: HistorySetLog[];
+}
+
+interface HistoryWorkoutDetail {
+  workout_date: string;
+  training_type: string;
+  phase: string;
+  session_rpe: number | null;
+  notes: string | null;
+  completed: boolean;
+  exercises: HistoryExerciseDetail[];
+}
+
+function dbDetailToLocal(d: HistoryDetailData): HistoryWorkoutDetail {
+  return {
+    workout_date: d.workout_date,
+    training_type: d.training_type,
+    phase: d.phase,
+    session_rpe: d.session_rpe,
+    notes: d.notes,
+    completed: d.completed,
+    exercises: d.exercises.map(ex => ({
+      exercise_name: ex.exercise_name,
+      prescribed_sets: ex.prescribed_sets,
+      prescribed_reps: ex.prescribed_reps,
+      sets: ex.sets.map(s => ({
+        set_number: s.set_number,
+        weight: s.weight ?? 0,
+        reps: s.reps ?? 0,
+        rpe: s.rpe ?? 0,
+        notes: s.notes,
+        pain_flag: s.pain_flag,
+        pain_area: s.pain_area as string | null,
+      })),
+    })),
+  };
+}
 
 // ─── Conversion helpers ────────────────────────────────────
 function toFakeExercise(ex: HistoryExerciseDetail, idx: number) {
@@ -78,9 +122,10 @@ function SetRowDisplay({ set }: { set: HistorySetLog }) {
 }
 
 // ─── History Detail ────────────────────────────────────────
-function HistoryDetail({ detail, historyId, onBack, onUpdated }: {
+function HistoryDetail({ detail, workoutId, userId, onBack, onUpdated }: {
   detail: HistoryWorkoutDetail;
-  historyId: string;
+  workoutId: string;
+  userId: string;
   onBack: () => void;
   onUpdated: () => void;
 }) {
@@ -107,14 +152,10 @@ function HistoryDetail({ detail, historyId, onBack, onUpdated }: {
       notes: editSessionNotes || null,
     };
 
-    DEMO_HISTORY_DETAILS[historyId] = finalData;
-    const entry = DEMO_MEMBER_HISTORY.find(h => h.id === historyId);
-    if (entry) {
-      entry.session_rpe = finalData.session_rpe;
-      entry.exercise_count = finalData.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-    }
     setEditData(finalData);
     setIsEditing(false);
+    upsertSession(userId, workoutId, finalData.completed, finalData.session_rpe, finalData.notes)
+      .catch(e => console.error("Failed to save session edit", e));
     onUpdated();
   };
 
@@ -298,22 +339,44 @@ function HistoryDetail({ detail, historyId, onBack, onUpdated }: {
 // ─── Main History Component ────────────────────────────────
 export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const activeUserId = userId || "demo-user-001";
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [exerciseView, setExerciseView] = useState<{ name: string } | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [details, setDetails] = useState<Record<string, HistoryWorkoutDetail>>({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    return onHistoryUpdate(() => forceUpdate((n) => n + 1));
-  }, []);
+    let mounted = true;
+    async function load() {
+      try {
+        const entries = await loadUserHistory(activeUserId);
+        if (!mounted) return;
+        setHistory(entries);
+        const detailMap: Record<string, HistoryWorkoutDetail> = {};
+        for (const entry of entries) {
+          const d = await loadHistoryDetail(activeUserId, entry.workout_id);
+          if (d && mounted) detailMap[entry.workout_id] = dbDetailToLocal(d);
+        }
+        if (mounted) setDetails(detailMap);
+      } catch (e) {
+        console.error("Failed to load history", e);
+      }
+      if (mounted) setLoading(false);
+    }
+    load();
+    return () => { mounted = false; };
+  }, [activeUserId]);
 
   const allExerciseNames = useMemo(() => {
     const names = new Set<string>();
-    for (const detail of Object.values(DEMO_HISTORY_DETAILS)) {
+    for (const detail of Object.values(details)) {
       for (const ex of detail.exercises) names.add(ex.exercise_name);
     }
     return Array.from(names).sort();
-  }, []);
+  }, [details]);
 
   const suggestions = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -325,12 +388,12 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
   // Exercise history drill-down
   if (exerciseView) {
     const sessions: { date: string; detail: HistoryWorkoutDetail; exercise: HistoryExerciseDetail; historyId: string }[] = [];
-    for (const h of DEMO_MEMBER_HISTORY) {
-      const detail = DEMO_HISTORY_DETAILS[h.id];
+    for (const h of history) {
+      const detail = details[h.workout_id];
       if (!detail) continue;
       for (const ex of detail.exercises) {
         if (ex.exercise_name === exerciseView.name) {
-          sessions.push({ date: h.workout_date, detail, exercise: ex, historyId: h.id });
+          sessions.push({ date: h.workout_date, detail, exercise: ex, historyId: h.workout_id });
         }
       }
     }
@@ -357,7 +420,7 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
                     <p className="text-xs text-muted-foreground capitalize">{s.detail.training_type.replace("_", " ")} · {s.detail.phase}</p>
                   </div>
                   <button
-                    onClick={() => { setExerciseView(null); setSelectedId(s.historyId); }}
+                    onClick={() => { setExerciseView(null); setSelectedWorkoutId(s.historyId); }}
                     className="text-xs font-medium text-primary px-3 py-2 rounded-lg bg-primary/10 active:scale-95"
                   >
                     View workout
@@ -379,13 +442,13 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
   // Search results
   if (searchQuery.trim() && suggestions.length === 0) {
     const exerciseGroups: Record<string, { date: string; sets: HistoryExerciseDetail["sets"]; historyId: string; detail: HistoryWorkoutDetail }[]> = {};
-    for (const h of DEMO_MEMBER_HISTORY) {
-      const detail = DEMO_HISTORY_DETAILS[h.id];
+    for (const h of history) {
+      const detail = details[h.workout_id];
       if (!detail) continue;
       for (const ex of detail.exercises) {
         if (ex.exercise_name.toLowerCase().includes(searchQuery.toLowerCase())) {
           if (!exerciseGroups[ex.exercise_name]) exerciseGroups[ex.exercise_name] = [];
-          exerciseGroups[ex.exercise_name].push({ date: h.workout_date, sets: ex.sets, historyId: h.id, detail });
+          exerciseGroups[ex.exercise_name].push({ date: h.workout_date, sets: ex.sets, historyId: h.workout_id, detail });
         }
       }
     }
@@ -438,14 +501,22 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
     }
   }
 
-  if (selectedId) {
-    const detail = DEMO_HISTORY_DETAILS[selectedId];
+  if (selectedWorkoutId) {
+    const detail = details[selectedWorkoutId];
     if (detail) {
-      return <HistoryDetail detail={detail} historyId={selectedId} onBack={() => setSelectedId(null)} onUpdated={() => forceUpdate(n => n + 1)} />;
+      return <HistoryDetail detail={detail} workoutId={selectedWorkoutId} userId={activeUserId} onBack={() => setSelectedWorkoutId(null)} onUpdated={() => forceUpdate(n => n + 1)} />;
     }
   }
 
-  const filteredHistory = DEMO_MEMBER_HISTORY;
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const filteredHistory = history;
 
   return (
     <div className="p-4 space-y-4">
@@ -459,7 +530,7 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
         <h2 className="text-lg font-bold text-foreground">Workout History</h2>
       </div>
 
-      {DEMO_MEMBER_HISTORY.length > 0 && (
+      {history.length > 0 && (
         <div className="relative" role="search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
@@ -499,8 +570,8 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
         <div className="space-y-2">
           {filteredHistory.map((h) => (
             <button
-              key={h.id}
-              onClick={() => setSelectedId(h.id)}
+              key={h.workout_id}
+              onClick={() => setSelectedWorkoutId(h.workout_id)}
               className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all active:scale-[0.98] min-h-[72px]"
             >
               <div className="flex-1 space-y-1">
@@ -526,14 +597,14 @@ export function DemoWorkoutHistory({ onBack, userId }: { onBack?: () => void; us
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {h.exercise_count} sets logged
+                  {h.set_count} sets logged
                   {h.session_rpe != null && (
                     <span className="inline-flex items-center gap-0.5 ml-1">
                       · <Star className="h-3 w-3 inline text-primary" /> {h.session_rpe}/10
                     </span>
                   )}
                   {(() => {
-                    const detail = DEMO_HISTORY_DETAILS[h.id];
+                    const detail = details[h.workout_id];
                     if (!detail) return null;
                     const totalSets = detail.exercises.reduce((sum, ex) => sum + ex.prescribed_sets, 0);
                     const loggedSets = detail.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
