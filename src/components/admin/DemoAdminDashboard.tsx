@@ -3,24 +3,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, ChevronRight, Pencil } from "lucide-react";
 import { format } from "date-fns";
-import {
-  getAllTrainerWorkouts,
-  getPublishedWorkoutForDate,
-  onWorkoutStoreUpdate,
-  type TrainerWorkout,
-} from "@/hooks/use-demo";
+import { loadAllWorkouts, type DbWorkout } from "@/lib/supabase-data";
 import { DemoWorkoutEditor } from "./DemoWorkoutEditor";
 
 export function DemoAdminDashboard() {
   const [view, setView] = useState<"dashboard" | "create" | "edit">("dashboard");
   const [editWorkoutId, setEditWorkoutId] = useState<string | null>(null);
-  const [, forceUpdate] = useState(0);
+  const [allWorkouts, setAllWorkouts] = useState<DbWorkout[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => onWorkoutStoreUpdate(() => forceUpdate(n => n + 1)), []);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await loadAllWorkouts();
+      setAllWorkouts(data);
+    } catch (e) {
+      console.error("Failed to load workouts", e);
+    }
+    setLoading(false);
+  }, []);
 
-  const allWorkouts = getAllTrainerWorkouts();
+  useEffect(() => { refresh(); }, [refresh]);
+
   const todayDate = new Date().toISOString().slice(0, 10);
-  const todayPublished = getPublishedWorkoutForDate(todayDate);
+  const todayPublished = allWorkouts.find(w => w.workout_date === todayDate && w.published) ?? null;
   const drafts = allWorkouts.filter(w => w.status === "draft");
   const published = allWorkouts.filter(w => w.status === "published");
 
@@ -28,7 +34,7 @@ export function DemoAdminDashboard() {
     return (
       <DemoWorkoutEditor
         workoutId={view === "edit" ? editWorkoutId : null}
-        onDone={() => setView("dashboard")}
+        onDone={() => { setView("dashboard"); refresh(); }}
       />
     );
   }
@@ -50,7 +56,9 @@ export function DemoAdminDashboard() {
       {/* Today's Published */}
       <div className="space-y-2">
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1">Today's Published Workout</h3>
-        {todayPublished ? (
+        {loading ? (
+          <div className="flex justify-center py-4"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+        ) : todayPublished ? (
           <WorkoutCard workout={todayPublished} onEdit={handleEdit} highlight />
         ) : (
           <p className="text-sm text-muted-foreground py-4 text-center">No workout published for today.</p>
