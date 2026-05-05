@@ -172,7 +172,7 @@ export function DemoWorkoutEditor({
   return (
     <div className="p-4 space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={onDone} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+        <button onClick={handleBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h2 className="text-lg font-bold text-foreground">
