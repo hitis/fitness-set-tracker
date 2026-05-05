@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,8 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowLeft, Plus, Trash2, GripVertical, Check, AlertTriangle } from "lucide-react";
-import type { BlockType, TrainerWorkout } from "@/hooks/use-demo";
-import { getTrainerWorkout, saveTrainerWorkout } from "@/hooks/use-demo";
+import { useAppAuth } from "@/hooks/use-app-auth";
+import { saveWorkoutToDb, loadWorkoutById, type BlockType, type SaveWorkoutInput } from "@/lib/supabase-data";
 
 const TRAINING_TYPES = [
   { value: "lower_body", label: "Lower Body" },
@@ -71,56 +71,47 @@ export function DemoWorkoutEditor({
   workoutId: string | null;
   onDone: () => void;
 }) {
-  const existing = workoutId ? getTrainerWorkout(workoutId) : null;
-  const [date, setDate] = useState(existing?.workout_date ?? formatDate(new Date()));
-  const [trainingType, setTrainingType] = useState(existing?.training_type ?? "full_body");
-  const [phase, setPhase] = useState(existing?.phase ?? "strength");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
-  const [blocks, setBlocks] = useState<EditorBlock[]>(() =>
-    existing?.blocks.map(b => ({
-      id: b.id,
-      name: b.name,
-      block_type: b.block_type,
-      notes: b.notes ?? "",
-      exercises: b.exercises.map(e => ({
-        id: e.id,
-        name: e.exercise_name,
-        prescribed_sets: e.prescribed_sets,
-        prescribed_reps: e.prescribed_reps,
-        notes: e.notes ?? "",
-      })),
-    })) ?? []
-  );
+  const { user } = useAppAuth();
+  const [existingId, setExistingId] = useState<string | null>(workoutId);
+  const [date, setDate] = useState(formatDate(new Date()));
+  const [trainingType, setTrainingType] = useState("full_body");
+  const [phase, setPhase] = useState("strength");
+  const [notes, setNotes] = useState("");
+  const [blocks, setBlocks] = useState<EditorBlock[]>([]);
   const [saved, setSaved] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(!!workoutId);
+  const [saving, setSaving] = useState(false);
   const dirtyRef = useRef(false);
 
-  const buildWorkout = (status: "draft" | "published"): TrainerWorkout => ({
-    id: existing?.id ?? crypto.randomUUID(),
-    workout_date: date,
-    training_type: trainingType,
-    phase,
-    notes: notes || null,
-    status,
-    blocks: blocks.map((b, bi) => ({
-      id: b.id,
-      name: b.name || `Block ${bi + 1}`,
-      block_type: b.block_type,
-      notes: b.notes || null,
-      sort_order: bi,
-      exercises: b.exercises.map((e, ei) => ({
-        id: e.id,
-        exercise_id: e.id,
-        exercise_name: e.name || `Exercise ${ei + 1}`,
-        prescribed_sets: e.prescribed_sets,
-        prescribed_reps: e.prescribed_reps,
-        notes: e.notes || null,
-        sort_order: ei,
-      })),
-    })),
-    created_at: existing?.created_at ?? new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+  // Load existing workout from Supabase
+  useEffect(() => {
+    if (!workoutId) return;
+    let mounted = true;
+    loadWorkoutById(workoutId).then((w) => {
+      if (!mounted || !w) { setInitialLoading(false); return; }
+      setExistingId(w.id);
+      setDate(w.workout_date);
+      setTrainingType(w.training_type);
+      setPhase(w.phase);
+      setNotes(w.notes ?? "");
+      setBlocks(w.blocks.map(b => ({
+        id: b.id,
+        name: b.name,
+        block_type: b.block_type,
+        notes: b.notes ?? "",
+        exercises: b.exercises.map(e => ({
+          id: e.id,
+          name: e.exercise_name,
+          prescribed_sets: e.prescribed_sets,
+          prescribed_reps: e.prescribed_reps,
+          notes: e.notes ?? "",
+        })),
+      })));
+      setInitialLoading(false);
+    });
+    return () => { mounted = false; };
+  }, [workoutId]);
 
   const handleBack = () => {
     if (dirtyRef.current) {
@@ -204,12 +195,50 @@ export function DemoWorkoutEditor({
     );
   };
 
-  const handleSave = (publish: boolean) => {
-    const w = buildWorkout(publish ? "published" : "draft");
-    saveTrainerWorkout(w);
-    dirtyRef.current = false;
-    setSaved(true);
+  const handleSave = async (publish: boolean) => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const input: SaveWorkoutInput = {
+        id: existingId ?? undefined,
+        workout_date: date,
+        training_type: trainingType as SaveWorkoutInput["training_type"],
+        phase: phase as SaveWorkoutInput["phase"],
+        notes: notes || null,
+        published: publish,
+        created_by: user.id,
+        blocks: blocks.map((b, bi) => ({
+          name: b.name || `Block ${bi + 1}`,
+          block_type: b.block_type,
+          notes: b.notes || null,
+          sort_order: bi,
+          exercises: b.exercises.map((e, ei) => ({
+            name: e.name || `Exercise ${ei + 1}`,
+            prescribed_sets: e.prescribed_sets,
+            prescribed_reps: e.prescribed_reps,
+            notes: e.notes || null,
+            sort_order: ei,
+          })),
+        })),
+      };
+      const savedId = await saveWorkoutToDb(input);
+      setExistingId(savedId);
+      dirtyRef.current = false;
+      setSaved(true);
+    } catch (e) {
+      console.error("Failed to save workout", e);
+      alert("Failed to save workout. Check console for details.");
+    }
+    setSaving(false);
   };
+
+  if (initialLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   if (showUnsavedWarning) {
     return (
@@ -218,7 +247,7 @@ export function DemoWorkoutEditor({
         <h2 className="text-xl font-bold text-foreground text-center">You have unsaved changes</h2>
         <p className="text-sm text-muted-foreground text-center">Save draft before leaving?</p>
         <div className="w-full max-w-xs space-y-3">
-          <Button className="h-12 w-full text-base" onClick={() => { handleSave(false); onDone(); }}>
+          <Button className="h-12 w-full text-base" onClick={async () => { await handleSave(false); onDone(); }}>
             Save Draft
           </Button>
           <Button variant="destructive" className="h-12 w-full text-base" onClick={onDone}>
@@ -241,7 +270,7 @@ export function DemoWorkoutEditor({
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-bold text-foreground">Workout Saved</h2>
           <p className="text-sm text-muted-foreground">
-            Your workout has been saved. In the live app, this will be stored in the database.
+            Your workout has been saved to the database.
           </p>
         </div>
         <Button variant="secondary" className="h-12 w-full max-w-xs" onClick={onDone}>
@@ -437,14 +466,16 @@ export function DemoWorkoutEditor({
           variant="secondary"
           className="h-12 flex-1 text-base"
           onClick={() => handleSave(false)}
+          disabled={saving}
         >
-          Save Draft
+          {saving ? "Saving…" : "Save Draft"}
         </Button>
         <Button
           className="h-12 flex-1 text-base font-semibold"
           onClick={() => handleSave(true)}
+          disabled={saving}
         >
-          Publish
+          {saving ? "Saving…" : "Publish"}
         </Button>
       </div>
     </div>
