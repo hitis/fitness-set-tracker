@@ -271,7 +271,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
           </div>
           <Button variant="secondary" onClick={() => {
             // After editing, re-sync history
-            syncHistoryFromLog(log);
+            syncHistoryFromLog(log, workout);
             setIsEditing(false);
           }} className="h-12 w-full text-base">
             Done Editing
