@@ -640,10 +640,9 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 }
 
 // ─── Helper: sync current log to history ─────────────────────
-function syncHistoryFromLog(log: WorkoutLog) {
+function syncHistoryFromLog(log: WorkoutLog, workout: { blocks: DemoBlock[]; training_type: string; phase: string }) {
   const todayDate = log.workout_date;
-  const workout = DEMO_TODAY_WORKOUT;
-  const allExercises = workout.blocks.flatMap((b) => b.exercises);
+  const allExercises = workout.blocks.flatMap((b: DemoBlock) => b.exercises);
 
   // Calculate total logged
   let totalLogged = 0;
@@ -661,8 +660,8 @@ function syncHistoryFromLog(log: WorkoutLog) {
   const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
   const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
 
-  const detailExercises = allExercises.map((ex) => {
-    const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+  const detailExercises = allExercises.map((ex: DemoExercise) => {
+    const block = workout.blocks.find((b: DemoBlock) => b.exercises.some((e: DemoExercise) => e.id === ex.id))!;
     const isCond = CONDITIONING_TYPES.includes(block.block_type);
     const setData = log.strength_logs[ex.exercise_id];
     const condData = log.conditioning_logs[ex.exercise_id];
