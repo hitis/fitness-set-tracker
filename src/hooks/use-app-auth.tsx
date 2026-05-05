@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
 // ─── Types ───────────────────────────────────────────────────
-export type UserRole = "member" | "trainer" | "gym_owner";
+export type UserRole = "member" | "trainer";
 
 export interface AppUser {
   id: string;
@@ -18,7 +18,7 @@ const SEEDED_USERS: AppUser[] = [
     id: "user-shubham",
     name: "Shubham",
     mobile: "9999999999",
-    roles: ["member", "trainer", "gym_owner"],
+    roles: ["member", "trainer"],
     created_at: "2025-01-01T00:00:00Z",
     last_active_at: new Date().toISOString(),
   },

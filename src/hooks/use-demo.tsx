@@ -78,15 +78,64 @@ const DEMO_BLOCKS: DemoBlock[] = [
   },
 ];
 
-export const DEMO_TODAY_WORKOUT = {
+export interface TrainerWorkout {
+  id: string;
+  workout_date: string;
+  training_type: string;
+  phase: string;
+  notes: string | null;
+  status: "draft" | "published";
+  blocks: DemoBlock[];
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Shared Trainer Workout Store ────────────────────────────
+const _trainerWorkouts: Map<string, TrainerWorkout> = new Map();
+let _workoutStoreListeners: (() => void)[] = [];
+
+export function onWorkoutStoreUpdate(cb: () => void) {
+  _workoutStoreListeners.push(cb);
+  return () => { _workoutStoreListeners = _workoutStoreListeners.filter(l => l !== cb); };
+}
+function notifyWorkoutStoreUpdate() { _workoutStoreListeners.forEach(cb => cb()); }
+
+export function saveTrainerWorkout(w: TrainerWorkout): void {
+  _trainerWorkouts.set(w.id, { ...w, updated_at: new Date().toISOString() });
+  notifyWorkoutStoreUpdate();
+}
+
+export function getTrainerWorkout(id: string): TrainerWorkout | null {
+  return _trainerWorkouts.get(id) ?? null;
+}
+
+export function getAllTrainerWorkouts(): TrainerWorkout[] {
+  return Array.from(_trainerWorkouts.values()).sort((a, b) => b.workout_date.localeCompare(a.workout_date));
+}
+
+export function getPublishedWorkoutForDate(date: string): TrainerWorkout | null {
+  for (const w of _trainerWorkouts.values()) {
+    if (w.workout_date === date && w.status === "published") return w;
+  }
+  return null;
+}
+
+// Seed the default workout as published
+const _seededWorkout: TrainerWorkout = {
   id: DEMO_WORKOUT_ID,
   workout_date: new Date().toISOString().slice(0, 10),
   training_type: "lower_body",
   phase: "strength",
   notes: "Week 3 — push intensity. Track RPE carefully.",
-  published: true,
+  status: "published",
   blocks: DEMO_BLOCKS,
+  created_at: "2025-01-01T00:00:00Z",
+  updated_at: new Date().toISOString(),
 };
+_trainerWorkouts.set(_seededWorkout.id, _seededWorkout);
+
+// Legacy compat export
+export const DEMO_TODAY_WORKOUT = _seededWorkout;
 
 // Previous performance: last 3 entries per exercise
 export interface PreviousSetEntry {
@@ -196,11 +245,13 @@ export const DEMO_EXERCISE_HISTORY: Record<string, PreviousEntry[]> = {
   ],
 };
 
-export const DEMO_RECENT_WORKOUTS = [
-  { id: "w-1", workout_date: daysAgo(2), training_type: "upper_body", phase: "strength", published: true, notes: null },
-  { id: "w-2", workout_date: daysAgo(4), training_type: "lower_body", phase: "hypertrophy", published: true, notes: null },
-  { id: "w-3", workout_date: daysAgo(6), training_type: "full_body", phase: "strength", published: true, notes: null },
+export const DEMO_RECENT_WORKOUTS: TrainerWorkout[] = [
+  { id: "w-1", workout_date: daysAgo(2), training_type: "upper_body", phase: "strength", status: "published", notes: null, blocks: [], created_at: daysAgo(2), updated_at: daysAgo(2) },
+  { id: "w-2", workout_date: daysAgo(4), training_type: "lower_body", phase: "hypertrophy", status: "published", notes: null, blocks: [], created_at: daysAgo(4), updated_at: daysAgo(4) },
+  { id: "w-3", workout_date: daysAgo(6), training_type: "full_body", phase: "strength", status: "published", notes: null, blocks: [], created_at: daysAgo(6), updated_at: daysAgo(6) },
 ];
+// Seed recent workouts into the store
+DEMO_RECENT_WORKOUTS.forEach(w => _trainerWorkouts.set(w.id, w));
 
 export interface HistorySetLog {
   set_number: number;

@@ -1,17 +1,18 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import {
-  DEMO_TODAY_WORKOUT,
   DEMO_EXERCISE_HISTORY,
   addDemoHistoryEntry,
   DEMO_MEMBER_HISTORY,
   DEMO_HISTORY_DETAILS,
   getOrCreateWorkoutLog,
   updateWorkoutLog,
+  getPublishedWorkoutForDate,
+  onWorkoutStoreUpdate,
   type DemoBlock,
   type DemoExercise,
   type BlockType,
@@ -22,14 +23,36 @@ import {
 } from "@/hooks/use-demo";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
-import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp } from "lucide-react";
+import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp, Dumbbell } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
 export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; userId?: string }) {
-  const workout = DEMO_TODAY_WORKOUT;
   const activeUserId = userId || "demo-user-001";
+  const todayDate = new Date().toISOString().slice(0, 10);
+
+  // Listen for workout store changes (e.g. trainer publishes)
+  const [, forceUpdate] = useState(0);
+  useEffect(() => onWorkoutStoreUpdate(() => forceUpdate(n => n + 1)), []);
+
+  const workout = getPublishedWorkoutForDate(todayDate);
+
+  // No published workout for today
+  if (!workout) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        {onBack && (
+          <button onClick={onBack} className="self-start flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <Dumbbell className="h-12 w-12 text-muted-foreground" />
+        <h2 className="text-xl font-bold text-foreground">No workout published for today</h2>
+        <p className="text-sm text-muted-foreground text-center">Your trainer hasn't published a workout for today yet. Check back later!</p>
+      </div>
+    );
+  }
 
   // Central log — single source of truth
   const [log, setLog] = useState<WorkoutLog>(() =>
@@ -248,7 +271,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
           </div>
           <Button variant="secondary" onClick={() => {
             // After editing, re-sync history
-            syncHistoryFromLog(log);
+            syncHistoryFromLog(log, workout);
             setIsEditing(false);
           }} className="h-12 w-full text-base">
             Done Editing
@@ -442,7 +465,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       syncLog(updatedLog);
 
       // Sync to history
-      syncHistoryFromLog(updatedLog);
+      syncHistoryFromLog(updatedLog, workout);
     };
 
     return (
@@ -551,9 +574,11 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
                 <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                   {block.name}
                 </h3>
-                <Badge variant="outline" className="text-[10px] capitalize border-border">
-                  {block.block_type.replace("_", " ")}
-                </Badge>
+                {block.name.toLowerCase().replace(/\s+/g, "_") !== block.block_type && (
+                  <Badge variant="outline" className="text-[10px] capitalize border-border">
+                    {block.block_type.replace("_", " ")}
+                  </Badge>
+                )}
                 <div className="h-px flex-1 bg-border" />
               </div>
               {block.notes && (
@@ -617,10 +642,9 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 }
 
 // ─── Helper: sync current log to history ─────────────────────
-function syncHistoryFromLog(log: WorkoutLog) {
+function syncHistoryFromLog(log: WorkoutLog, workout: { blocks: DemoBlock[]; training_type: string; phase: string }) {
   const todayDate = log.workout_date;
-  const workout = DEMO_TODAY_WORKOUT;
-  const allExercises = workout.blocks.flatMap((b) => b.exercises);
+  const allExercises = workout.blocks.flatMap((b: DemoBlock) => b.exercises);
 
   // Calculate total logged
   let totalLogged = 0;
@@ -638,8 +662,8 @@ function syncHistoryFromLog(log: WorkoutLog) {
   const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
   const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
 
-  const detailExercises = allExercises.map((ex) => {
-    const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+  const detailExercises = allExercises.map((ex: DemoExercise) => {
+    const block = workout.blocks.find((b: DemoBlock) => b.exercises.some((e: DemoExercise) => e.id === ex.id))!;
     const isCond = CONDITIONING_TYPES.includes(block.block_type);
     const setData = log.strength_logs[ex.exercise_id];
     const condData = log.conditioning_logs[ex.exercise_id];

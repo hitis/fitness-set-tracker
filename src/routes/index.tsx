@@ -23,7 +23,7 @@ function Index() {
   }
 
   // Map roles to views
-  const isTrainerOrOwner = activeRole === "trainer" || activeRole === "gym_owner";
+  const isTrainerOrOwner = activeRole === "trainer";
 
   return (
     <AppShell>
