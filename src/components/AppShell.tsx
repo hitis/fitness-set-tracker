@@ -11,7 +11,7 @@ export function AppShell({ children }: AppShellProps) {
   const navigate = useNavigate();
   const { user, activeRole, logout, switchRole } = useAppAuth();
 
-  const isTrainerOrOwner = activeRole === "trainer" || activeRole === "gym_owner";
+  const isTrainerOrOwner = activeRole === "trainer";
 
   const adminNav = [
     { to: "/" as const, icon: LayoutDashboard, label: "Dashboard" },
@@ -32,7 +32,6 @@ export function AppShell({ children }: AppShellProps) {
   const roleLabels: Record<UserRole, string> = {
     member: "Member",
     trainer: "Trainer",
-    gym_owner: "Owner",
   };
 
   return (
@@ -47,7 +46,7 @@ export function AppShell({ children }: AppShellProps) {
             <span className="text-base font-bold tracking-tight text-foreground">GymLog</span>
             {isTrainerOrOwner && (
               <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-                {activeRole === "trainer" ? "Trainer" : "Owner"}
+                Trainer
               </span>
             )}
           </div>

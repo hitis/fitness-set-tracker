@@ -17,12 +17,10 @@ export function MobileLogin() {
     const roleLabels: Record<UserRole, string> = {
       member: "Continue as Member",
       trainer: "Continue as Trainer",
-      gym_owner: "Continue as Gym Owner",
     };
     const roleColors: Record<UserRole, string> = {
       member: "bg-primary",
       trainer: "bg-amber-600",
-      gym_owner: "bg-emerald-600",
     };
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
