@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,8 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, GripVertical, Check } from "lucide-react";
-import type { BlockType } from "@/hooks/use-demo";
+import { ArrowLeft, Plus, Trash2, GripVertical, Check, AlertTriangle } from "lucide-react";
+import type { BlockType, TrainerWorkout } from "@/hooks/use-demo";
+import { getTrainerWorkout, saveTrainerWorkout } from "@/hooks/use-demo";
 
 const TRAINING_TYPES = [
   { value: "lower_body", label: "Lower Body" },
@@ -70,14 +71,67 @@ export function DemoWorkoutEditor({
   workoutId: string | null;
   onDone: () => void;
 }) {
-  const [date, setDate] = useState(formatDate(new Date()));
-  const [trainingType, setTrainingType] = useState("full_body");
-  const [phase, setPhase] = useState("strength");
-  const [notes, setNotes] = useState("");
-  const [blocks, setBlocks] = useState<EditorBlock[]>([]);
+  const existing = workoutId ? getTrainerWorkout(workoutId) : null;
+  const [date, setDate] = useState(existing?.workout_date ?? formatDate(new Date()));
+  const [trainingType, setTrainingType] = useState(existing?.training_type ?? "full_body");
+  const [phase, setPhase] = useState(existing?.phase ?? "strength");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [blocks, setBlocks] = useState<EditorBlock[]>(() =>
+    existing?.blocks.map(b => ({
+      id: b.id,
+      name: b.name,
+      block_type: b.block_type,
+      notes: b.notes ?? "",
+      exercises: b.exercises.map(e => ({
+        id: e.id,
+        name: e.exercise_name,
+        prescribed_sets: e.prescribed_sets,
+        prescribed_reps: e.prescribed_reps,
+        notes: e.notes ?? "",
+      })),
+    })) ?? []
+  );
   const [saved, setSaved] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const dirtyRef = useRef(false);
+
+  const buildWorkout = (status: "draft" | "published"): TrainerWorkout => ({
+    id: existing?.id ?? crypto.randomUUID(),
+    workout_date: date,
+    training_type: trainingType,
+    phase,
+    notes: notes || null,
+    status,
+    blocks: blocks.map((b, bi) => ({
+      id: b.id,
+      name: b.name || `Block ${bi + 1}`,
+      block_type: b.block_type,
+      notes: b.notes || null,
+      sort_order: bi,
+      exercises: b.exercises.map((e, ei) => ({
+        id: e.id,
+        exercise_id: e.id,
+        exercise_name: e.name || `Exercise ${ei + 1}`,
+        prescribed_sets: e.prescribed_sets,
+        prescribed_reps: e.prescribed_reps,
+        notes: e.notes || null,
+        sort_order: ei,
+      })),
+    })),
+    created_at: existing?.created_at ?? new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  const handleBack = () => {
+    if (dirtyRef.current) {
+      setShowUnsavedWarning(true);
+    } else {
+      onDone();
+    }
+  };
 
   const addBlock = () => {
+    dirtyRef.current = true;
     setBlocks([
       ...blocks,
       {
@@ -91,14 +145,17 @@ export function DemoWorkoutEditor({
   };
 
   const removeBlock = (id: string) => {
+    dirtyRef.current = true;
     setBlocks(blocks.filter((b) => b.id !== id));
   };
 
   const updateBlock = (id: string, field: string, value: string) => {
+    dirtyRef.current = true;
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, [field]: value } : b)));
   };
 
   const addExercise = (blockId: string) => {
+    dirtyRef.current = true;
     setBlocks(
       blocks.map((b) =>
         b.id === blockId
@@ -121,6 +178,7 @@ export function DemoWorkoutEditor({
   };
 
   const removeExercise = (blockId: string, exId: string) => {
+    dirtyRef.current = true;
     setBlocks(
       blocks.map((b) =>
         b.id === blockId
@@ -131,6 +189,7 @@ export function DemoWorkoutEditor({
   };
 
   const updateExercise = (blockId: string, exId: string, field: string, value: string | number) => {
+    dirtyRef.current = true;
     setBlocks(
       blocks.map((b) =>
         b.id === blockId
@@ -146,9 +205,32 @@ export function DemoWorkoutEditor({
   };
 
   const handleSave = (publish: boolean) => {
-    // In demo mode, just show success
+    const w = buildWorkout(publish ? "published" : "draft");
+    saveTrainerWorkout(w);
+    dirtyRef.current = false;
     setSaved(true);
   };
+
+  if (showUnsavedWarning) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 space-y-6 min-h-[60vh]">
+        <AlertTriangle className="h-12 w-12 text-amber-500" />
+        <h2 className="text-xl font-bold text-foreground text-center">You have unsaved changes</h2>
+        <p className="text-sm text-muted-foreground text-center">Save draft before leaving?</p>
+        <div className="w-full max-w-xs space-y-3">
+          <Button className="h-12 w-full text-base" onClick={() => { handleSave(false); onDone(); }}>
+            Save Draft
+          </Button>
+          <Button variant="destructive" className="h-12 w-full text-base" onClick={onDone}>
+            Discard
+          </Button>
+          <Button variant="secondary" className="h-12 w-full text-base" onClick={() => setShowUnsavedWarning(false)}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (saved) {
     return (
