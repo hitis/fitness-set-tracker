@@ -465,7 +465,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       syncLog(updatedLog);
 
       // Sync to history
-      syncHistoryFromLog(updatedLog);
+      syncHistoryFromLog(updatedLog, workout);
     };
 
     return (
