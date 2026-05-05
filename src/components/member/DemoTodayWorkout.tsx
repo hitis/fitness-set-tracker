@@ -5,14 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import {
-  DEMO_EXERCISE_HISTORY,
-  addDemoHistoryEntry,
-  DEMO_MEMBER_HISTORY,
-  DEMO_HISTORY_DETAILS,
-  getOrCreateWorkoutLog,
-  updateWorkoutLog,
-  getPublishedWorkoutForDate,
-  onWorkoutStoreUpdate,
   type DemoBlock,
   type DemoExercise,
   type BlockType,
@@ -21,6 +13,15 @@ import {
   type WorkoutLogSet,
   type ConditioningLogEntry,
 } from "@/hooks/use-demo";
+import {
+  loadPublishedWorkoutForDate,
+  upsertMultipleSetLogs,
+  upsertSession,
+  loadSetLogs,
+  loadSession,
+  type DbWorkout,
+  type DbSetLog,
+} from "@/lib/supabase-data";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
 import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp, Dumbbell } from "lucide-react";
@@ -32,11 +33,32 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   const activeUserId = userId || "demo-user-001";
   const todayDate = new Date().toISOString().slice(0, 10);
 
-  // Listen for workout store changes (e.g. trainer publishes)
-  const [, forceUpdate] = useState(0);
-  useEffect(() => onWorkoutStoreUpdate(() => forceUpdate(n => n + 1)), []);
+  // Load published workout from Supabase
+  const [workout, setWorkout] = useState<DbWorkout | null>(null);
+  const [loadingWorkout, setLoadingWorkout] = useState(true);
 
-  const workout = getPublishedWorkoutForDate(todayDate);
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const w = await loadPublishedWorkoutForDate(todayDate);
+        if (mounted) setWorkout(w);
+      } catch (e) {
+        console.error("Failed to load workout", e);
+      }
+      if (mounted) setLoadingWorkout(false);
+    }
+    load();
+    return () => { mounted = false; };
+  }, [todayDate]);
+
+  if (loadingWorkout) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   // No published workout for today
   if (!workout) {
@@ -54,15 +76,91 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     );
   }
 
-  // Central log — single source of truth
-  const [log, setLog] = useState<WorkoutLog>(() =>
-    getOrCreateWorkoutLog(activeUserId, workout.id, workout.workout_date)
-  );
+  // Convert DbWorkout blocks to DemoBlock/DemoExercise for logger compatibility
+  const demoWorkout = useMemo(() => {
+    if (!workout) return null;
+    return {
+      id: workout.id,
+      workout_date: workout.workout_date,
+      training_type: workout.training_type,
+      phase: workout.phase,
+      notes: workout.notes,
+      blocks: workout.blocks.map((b): DemoBlock => ({
+        id: b.id,
+        name: b.name,
+        block_type: b.block_type as BlockType,
+        notes: b.notes,
+        sort_order: b.sort_order,
+        exercises: b.exercises.map((e): DemoExercise => ({
+          id: e.id,
+          exercise_id: e.exercise_id,
+          exercise_name: e.exercise_name,
+          prescribed_sets: e.prescribed_sets,
+          prescribed_reps: e.prescribed_reps,
+          notes: e.notes,
+          sort_order: e.sort_order,
+        })),
+      })),
+    };
+  }, [workout]);
 
-  // Sync log to module store on every change
+  // Central log — in-memory during session, synced to Supabase on save
+  const [log, setLog] = useState<WorkoutLog>({
+    user_id: activeUserId,
+    workout_id: workout?.id ?? "",
+    workout_date: todayDate,
+    status: "not_started",
+    session_rpe: null,
+    session_notes: null,
+    strength_logs: {},
+    conditioning_logs: {},
+    updated_at: new Date().toISOString(),
+  });
+  const [logLoaded, setLogLoaded] = useState(false);
+
+  // Load existing set logs and session from Supabase
+  useEffect(() => {
+    if (!workout) return;
+    let mounted = true;
+    async function loadExisting() {
+      try {
+        const [existingLogs, existingSession] = await Promise.all([
+          loadSetLogs(activeUserId, workout!.id),
+          loadSession(activeUserId, workout!.id),
+        ]);
+        if (!mounted) return;
+        // Convert DB set logs to WorkoutLogSet format
+        const strengthLogs: Record<string, WorkoutLogSet[]> = {};
+        for (const [exerciseId, sets] of Object.entries(existingLogs)) {
+          strengthLogs[exerciseId] = sets.map(s => ({
+            set_number: s.set_number,
+            weight: s.weight ?? 0,
+            reps: s.reps ?? 0,
+            rpe: s.rpe ?? 0,
+            notes: s.notes,
+            pain_flag: s.pain_flag,
+            pain_areas: s.pain_area ? [s.pain_area] : [],
+          }));
+        }
+        setLog(prev => ({
+          ...prev,
+          workout_id: workout!.id,
+          strength_logs: strengthLogs,
+          status: existingSession?.completed ? "completed" : Object.keys(strengthLogs).length > 0 ? "in_progress" : "not_started",
+          session_rpe: existingSession?.session_rpe ?? null,
+          session_notes: existingSession?.notes ?? null,
+        }));
+      } catch (e) {
+        console.error("Failed to load existing logs", e);
+      }
+      if (mounted) setLogLoaded(true);
+    }
+    loadExisting();
+    return () => { mounted = false; };
+  }, [workout, activeUserId]);
+
   const syncLog = useCallback((updatedLog: WorkoutLog) => {
     setLog(updatedLog);
-    updateWorkoutLog(updatedLog);
   }, []);
 
   const [selectedExercise, setSelectedExercise] = useState<{ exercise: DemoExercise; block: DemoBlock } | null>(null);
@@ -76,25 +174,25 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   const [sessionRpe, setSessionRpe] = useState(log.session_rpe?.toString() ?? "");
   const [sessionNotes, setSessionNotes] = useState(log.session_notes ?? "");
 
+  if (!demoWorkout) return null;
+
   const completed = log.status === "completed";
 
   // Compute stats from central log
-  const allExercises = useMemo(() => workout.blocks.flatMap((b) => b.exercises), [workout]);
+  const allExercises = demoWorkout.blocks.flatMap((b) => b.exercises);
 
-  const totalPrescribedSets = useMemo(() => {
     let total = 0;
-    for (const block of workout.blocks) {
+    for (const block of demoWorkout.blocks) {
       for (const ex of block.exercises) {
         const isCond = CONDITIONING_TYPES.includes(block.block_type);
         total += isCond ? 1 : ex.prescribed_sets; // conditioning counts as 1 required item
       }
     }
     return total;
-  }, [workout]);
+  }, [demoWorkout]);
 
-  const totalLoggedSets = useMemo(() => {
     let count = 0;
-    for (const block of workout.blocks) {
+    for (const block of demoWorkout.blocks) {
       for (const ex of block.exercises) {
         const isCond = CONDITIONING_TYPES.includes(block.block_type);
         if (isCond) {
@@ -106,7 +204,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       }
     }
     return count;
-  }, [log, workout]);
+  }, [log, demoWorkout]);
 
   const completionPct = totalPrescribedSets > 0 ? Math.round((totalLoggedSets / totalPrescribedSets) * 100) : 0;
 
@@ -128,22 +226,58 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   };
 
   // ─── Save handlers ─────────────────────────────────────────
-  const handleStrengthSave = (exerciseId: string, sets: WorkoutLogSet[]) => {
+  const handleStrengthSave = async (exerciseId: string, sets: WorkoutLogSet[]) => {
     const updated: WorkoutLog = {
       ...log,
       status: log.status === "not_started" ? "in_progress" : log.status,
       strength_logs: { ...log.strength_logs, [exerciseId]: sets },
     };
     syncLog(updated);
+    // Persist to Supabase
+    try {
+      const dbSets: DbSetLog[] = sets.map(s => ({
+        set_number: s.set_number,
+        weight: s.weight > 0 ? s.weight : null,
+        reps: s.reps > 0 ? s.reps : null,
+        rpe: s.rpe > 0 ? s.rpe : null,
+        notes: s.notes,
+        pain_flag: s.pain_flag,
+        pain_area: s.pain_areas.length > 0 ? s.pain_areas[0] as DbSetLog["pain_area"] : null,
+      }));
+      await upsertMultipleSetLogs(activeUserId, demoWorkout.id, exerciseId, dbSets);
+    } catch (e) {
+      console.error("Failed to save set logs", e);
+    }
   };
 
-  const handleConditioningSave = (data: ConditioningLogEntry) => {
+  const handleConditioningSave = async (data: ConditioningLogEntry) => {
     const updated: WorkoutLog = {
       ...log,
       status: log.status === "not_started" ? "in_progress" : log.status,
       conditioning_logs: { ...log.conditioning_logs, [data.exercise_id]: data },
     };
     syncLog(updated);
+    // Persist conditioning as a single set log
+    if (data.completed) {
+      try {
+        const dbSet: DbSetLog = {
+          set_number: 1,
+          weight: data.weight,
+          reps: data.rounds,
+          rpe: data.rpe,
+          notes: data.notes,
+          pain_flag: data.pain_areas.length > 0,
+          pain_area: data.pain_areas.length > 0 ? data.pain_areas[0] as DbSetLog["pain_area"] : null,
+        };
+        // Find exercise_id for this conditioning exercise
+        const exercise = demoWorkout.blocks.flatMap(b => b.exercises).find(e => e.exercise_id === data.exercise_id);
+        if (exercise) {
+          await upsertMultipleSetLogs(activeUserId, demoWorkout.id, exercise.exercise_id, [dbSet]);
+        }
+      } catch (e) {
+        console.error("Failed to save conditioning log", e);
+      }
+    }
   };
 
   // ─── Sub-views ─────────────────────────────────────────────
@@ -189,7 +323,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   // Selected exercise → logger
   if (selectedExercise) {
     const isCond = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
-    const history = DEMO_EXERCISE_HISTORY[selectedExercise.exercise.exercise_id] || [];
+    const history: PreviousEntry[] = [];
     if (isCond) {
       return (
         <DemoConditioningLogger
@@ -239,7 +373,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
           </div>
           <p className="text-sm text-muted-foreground">Tap an exercise to edit your logged sets.</p>
           <div className="space-y-2">
-            {workout.blocks.map((block) => block.exercises.map((ex) => {
+          {demoWorkout.blocks.map((block) => block.exercises.map((ex) => {
               const status = getExerciseStatus(ex, block);
               const isCond = CONDITIONING_TYPES.includes(block.block_type);
               const loggedCount = isCond
@@ -269,11 +403,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
               );
             }))}
           </div>
-          <Button variant="secondary" onClick={() => {
-            // After editing, re-sync history
-            syncHistoryFromLog(log, workout);
-            setIsEditing(false);
-          }} className="h-12 w-full text-base">
+          <Button variant="secondary" onClick={() => setIsEditing(false)} className="h-12 w-full text-base">
             Done Editing
           </Button>
         </div>
@@ -291,7 +421,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
             <div>
               <h2 className="text-lg font-bold text-foreground">Saved Workout</h2>
               <p className="text-xs text-muted-foreground">
-                {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
+                {format(new Date(demoWorkout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
               </p>
             </div>
           </div>
@@ -303,7 +433,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
           )}
           <div className="space-y-3">
             {allExercises.map((ex) => {
-              const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+              const block = demoWorkout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
               const isCond = CONDITIONING_TYPES.includes(block.block_type);
               const setData = log.strength_logs[ex.exercise_id];
               const condData = log.conditioning_logs[ex.exercise_id];
@@ -388,8 +518,8 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
           </div>
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-bold text-foreground">Workout Completed</h2>
-            <p className="text-muted-foreground capitalize">
-              {workout.training_type.replace("_", " ")} · {workout.phase}
+          <p className="text-muted-foreground capitalize">
+              {demoWorkout.training_type.replace("_", " ")} · {demoWorkout.phase}
             </p>
           </div>
         </div>
@@ -436,7 +566,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   // ─── Finish Workout screen ─────────────────────────────────
   if (showFinish) {
     const incompleteExercises = allExercises.filter((ex) => {
-      const block = workout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
+      const block = demoWorkout.blocks.find(b => b.exercises.some(e => e.id === ex.id))!;
       const isCond = CONDITIONING_TYPES.includes(block.block_type);
       if (isCond) return !log.conditioning_logs[ex.exercise_id]?.completed;
       return (log.strength_logs[ex.exercise_id]?.length ?? 0) === 0;
@@ -464,8 +594,9 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       };
       syncLog(updatedLog);
 
-      // Sync to history
-      syncHistoryFromLog(updatedLog, workout);
+      // Persist session to Supabase
+      upsertSession(activeUserId, demoWorkout.id, true, rpeNum, sessionNotes || null)
+        .catch(e => console.error("Failed to save session", e));
     };
 
     return (
@@ -535,18 +666,18 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       {/* Workout Header */}
       <div className="rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 border-primary/20">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          {format(new Date(workout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
+          {format(new Date(demoWorkout.workout_date + "T00:00:00"), "EEEE, MMMM d")}
         </p>
         <h2 className="text-xl font-bold text-foreground capitalize">
-          {workout.training_type.replace("_", " ")}
+          {demoWorkout.training_type.replace("_", " ")}
         </h2>
         <div className="flex items-center gap-2">
           <Badge className="bg-primary/20 text-primary border-0 text-xs font-semibold">
-            {workout.phase}
+            {demoWorkout.phase}
           </Badge>
         </div>
-        {workout.notes && (
-          <p className="text-sm text-muted-foreground italic">{workout.notes}</p>
+        {demoWorkout.notes && (
+          <p className="text-sm text-muted-foreground italic">{demoWorkout.notes}</p>
         )}
       </div>
 
@@ -565,7 +696,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
       {/* Blocks */}
       <div className="space-y-6">
-        {workout.blocks.map((block) => {
+        {demoWorkout.blocks.map((block) => {
           const isCond = CONDITIONING_TYPES.includes(block.block_type);
           return (
             <div key={block.id} className="space-y-2">
@@ -639,84 +770,4 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
       </Button>
     </div>
   );
-}
-
-// ─── Helper: sync current log to history ─────────────────────
-function syncHistoryFromLog(log: WorkoutLog, workout: { blocks: DemoBlock[]; training_type: string; phase: string }) {
-  const todayDate = log.workout_date;
-  const allExercises = workout.blocks.flatMap((b: DemoBlock) => b.exercises);
-
-  // Calculate total logged
-  let totalLogged = 0;
-  for (const block of workout.blocks) {
-    for (const ex of block.exercises) {
-      const isCond = CONDITIONING_TYPES.includes(block.block_type);
-      if (isCond) {
-        if (log.conditioning_logs[ex.exercise_id]?.completed) totalLogged++;
-      } else {
-        totalLogged += (log.strength_logs[ex.exercise_id]?.length ?? 0);
-      }
-    }
-  }
-
-  const existingIdx = DEMO_MEMBER_HISTORY.findIndex(h => h.workout_date === todayDate);
-  const entryId = existingIdx >= 0 ? DEMO_MEMBER_HISTORY[existingIdx].id : `s-new-${Date.now()}`;
-
-  const detailExercises = allExercises.map((ex: DemoExercise) => {
-    const block = workout.blocks.find((b: DemoBlock) => b.exercises.some((e: DemoExercise) => e.id === ex.id))!;
-    const isCond = CONDITIONING_TYPES.includes(block.block_type);
-    const setData = log.strength_logs[ex.exercise_id];
-    const condData = log.conditioning_logs[ex.exercise_id];
-    return {
-      exercise_name: ex.exercise_name,
-      prescribed_sets: isCond ? 1 : ex.prescribed_sets,
-      prescribed_reps: ex.prescribed_reps,
-      sets: isCond
-        ? (condData?.completed
-          ? [{ set_number: 1, weight: condData.weight ?? 0, reps: condData.rounds ?? 1, rpe: condData.rpe ?? 0, notes: condData.notes, pain_flag: condData.pain_areas.length > 0, pain_area: condData.pain_areas.join(", ") || null }]
-          : [])
-        : (setData ?? []).map(s => ({
-            set_number: s.set_number,
-            weight: s.weight,
-            reps: s.reps,
-            rpe: s.rpe,
-            notes: s.notes,
-            pain_flag: s.pain_flag,
-            pain_area: s.pain_areas.length > 0 ? s.pain_areas.join(", ") : null,
-          })),
-    };
-  });
-
-  const detail = {
-    workout_date: todayDate,
-    training_type: workout.training_type,
-    phase: workout.phase,
-    session_rpe: log.session_rpe,
-    notes: log.session_notes,
-    completed: log.status === "completed",
-    exercises: detailExercises,
-  };
-
-  if (existingIdx >= 0) {
-    DEMO_MEMBER_HISTORY[existingIdx] = {
-      ...DEMO_MEMBER_HISTORY[existingIdx],
-      session_rpe: log.session_rpe,
-      completed: log.status === "completed",
-      exercise_count: totalLogged,
-    };
-    DEMO_HISTORY_DETAILS[entryId] = detail;
-  } else {
-    addDemoHistoryEntry(
-      {
-        id: entryId,
-        workout_date: todayDate,
-        training_type: workout.training_type,
-        phase: workout.phase,
-        session_rpe: log.session_rpe,
-        completed: log.status === "completed",
-        exercise_count: totalLogged,
-      },
-      detail,
-    );
-  }
 }
