@@ -166,6 +166,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
   const [selectedExercise, setSelectedExercise] = useState<{ exercise: DemoExercise; block: DemoBlock } | null>(null);
   const [exerciseHistoryView, setExerciseHistoryView] = useState<{ exercise: DemoExercise; history: PreviousEntry[] } | null>(null);
+  const [exerciseHistoryCache, setExerciseHistoryCache] = useState<Record<string, PreviousEntry[]>>({});
   const [showFinish, setShowFinish] = useState(false);
   const [showSavedSummary, setShowSavedSummary] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -323,10 +324,28 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     );
   }
 
+  // Load exercise history when an exercise is selected
+  useEffect(() => {
+    if (!selectedExercise || !workout) return;
+    const exId = selectedExercise.exercise.exercise_id;
+    if (exerciseHistoryCache[exId]) return; // already loaded
+    let mounted = true;
+    loadExerciseHistory(activeUserId, exId, workout.id).then((perfs) => {
+      if (!mounted) return;
+      const mapped: PreviousEntry[] = perfs.map(p => ({
+        date: p.date,
+        sets: p.sets,
+        notes: p.notes,
+      }));
+      setExerciseHistoryCache(prev => ({ ...prev, [exId]: mapped }));
+    }).catch(e => console.error("Failed to load exercise history", e));
+    return () => { mounted = false; };
+  }, [selectedExercise, activeUserId, workout]);
+
   // Selected exercise → logger
   if (selectedExercise) {
     const isCond = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
-    const history: PreviousEntry[] = [];
+    const history: PreviousEntry[] = exerciseHistoryCache[selectedExercise.exercise.exercise_id] || [];
     if (isCond) {
       return (
         <DemoConditioningLogger
