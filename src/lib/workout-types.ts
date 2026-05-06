@@ -50,8 +50,7 @@ export interface ConditioningLogEntry {
   weight: number | null;
   rounds: number | null;
   rpe: number | null;
-  duration: string;
-  notes: string;
+  notes: string | null;
   pain_areas: string[];
 }
 
