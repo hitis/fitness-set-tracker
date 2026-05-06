@@ -111,7 +111,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   const [log, setLog] = useState<WorkoutLog>({
     user_id: activeUserId,
     workout_id: workout?.id ?? "",
-    workout_date: todayDate,
+    workout_date: selectedDate,
     status: "not_started",
     session_rpe: null,
     session_notes: null,
