@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertTriangle, Check, Copy, ChevronDown, Info, X, Pencil } from "lucide-react";
 import { format } from "date-fns";
-import type { DemoExercise, PreviousEntry } from "@/hooks/use-demo";
+import type { DemoExercise, PreviousEntry } from "@/lib/workout-types";
 import {
   sanitizeDecimal,
   sanitizeInteger,
