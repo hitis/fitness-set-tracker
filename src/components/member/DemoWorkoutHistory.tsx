@@ -5,10 +5,7 @@ import { ArrowLeft, ChevronRight, AlertTriangle, Check, Search, X, Star, Pencil 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  type HistorySetLog,
-  type WorkoutLogSet,
-} from "@/hooks/use-demo";
+import type { HistorySetLog, WorkoutLogSet } from "@/lib/workout-types";
 import {
   loadUserHistory,
   loadHistoryDetail,
