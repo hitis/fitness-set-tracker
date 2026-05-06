@@ -4,21 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
-import {
-  type DemoBlock,
-  type DemoExercise,
-  type BlockType,
-  type PreviousEntry,
-  type WorkoutLog,
-  type WorkoutLogSet,
-  type ConditioningLogEntry,
-} from "@/hooks/use-demo";
+import type {
+  DemoBlock,
+  DemoExercise,
+  BlockType,
+  PreviousEntry,
+  WorkoutLog,
+  WorkoutLogSet,
+  ConditioningLogEntry,
+} from "@/lib/workout-types";
 import {
   loadPublishedWorkoutForDate,
   upsertMultipleSetLogs,
   upsertSession,
   loadSetLogs,
   loadSession,
+  loadExerciseHistory,
   type DbWorkout,
   type DbSetLog,
 } from "@/lib/supabase-data";
