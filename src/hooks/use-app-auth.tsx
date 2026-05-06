@@ -152,6 +152,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       if (error.message.includes("already registered")) {
         return { success: false, error: "An account with this number already exists. Please login." };
       }
+      if (error.message.includes("over_email_send_rate_limit") || error.message.includes("rate limit")) {
+        return { success: false, error: "Too many attempts. Please wait a moment and try again." };
+      }
       return { success: false, error: error.message };
     }
     return { success: true };
