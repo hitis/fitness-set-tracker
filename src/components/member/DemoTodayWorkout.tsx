@@ -32,7 +32,7 @@ const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", 
 
 export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const activeUserId = userId || "demo-user-001";
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Load published workout from Supabase
   const [workout, setWorkout] = useState<DbWorkout | null>(null);
@@ -40,9 +40,11 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
   useEffect(() => {
     let mounted = true;
+    setLoadingWorkout(true);
+    setWorkout(null);
     async function load() {
       try {
-        const w = await loadPublishedWorkoutForDate(todayDate);
+        const w = await loadPublishedWorkoutForDate(selectedDate);
         if (mounted) setWorkout(w);
       } catch (e) {
         console.error("Failed to load workout", e);
@@ -51,7 +53,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     }
     load();
     return () => { mounted = false; };
-  }, [todayDate]);
+  }, [selectedDate]);
 
   if (loadingWorkout) {
     return (
