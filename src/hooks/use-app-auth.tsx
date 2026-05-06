@@ -106,8 +106,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (mobile: string, passcode: string) => {
     const trimmed = mobile.replace(/\D/g, "");
     const email = mobileToEmail(trimmed);
-    // Password is the full mobile number
-    const { error } = await supabase.auth.signInWithPassword({ email, password: trimmed });
+    // Password is the last 4 digits of mobile number
+    const pin = passcode.replace(/\D/g, "").slice(-4);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pin });
     if (error) {
       if (error.message === "Invalid login credentials") {
         return { success: false, error: "Invalid mobile number or passcode." };
@@ -140,7 +141,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     const email = mobileToEmail(trimmed);
     const { error } = await supabase.auth.signUp({
       email,
-      password: trimmed,
+      password: trimmed.slice(-4),
       options: {
         data: {
           full_name: name.trim(),
