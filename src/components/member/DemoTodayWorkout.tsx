@@ -26,6 +26,7 @@ import {
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
 import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp, Dumbbell } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
@@ -57,24 +58,21 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
   if (loadingWorkout) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4 p-4">
+        <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
-  // No published workout for today
+  // No published workout for selected day
   if (!workout) {
     return (
       <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        {onBack && (
-          <button onClick={onBack} className="self-start flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        )}
+        <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
         <Dumbbell className="h-12 w-12 text-muted-foreground" />
-        <h2 className="text-xl font-bold text-foreground">No workout published for today</h2>
-        <p className="text-sm text-muted-foreground text-center">Your trainer hasn't published a workout for today yet. Check back later!</p>
+        <h2 className="text-xl font-bold text-foreground">No workout for this day</h2>
+        <p className="text-sm text-muted-foreground text-center">No published workout found. Try a different date.</p>
       </div>
     );
   }
