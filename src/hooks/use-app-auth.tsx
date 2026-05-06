@@ -139,7 +139,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: "Name is required." };
     }
     const email = mobileToEmail(trimmed);
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password: trimmed.slice(-4),
       options: {
@@ -157,6 +157,10 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: "Too many attempts. Please wait a moment and try again." };
       }
       return { success: false, error: error.message };
+    }
+    // Supabase returns a fake user with no identities if email already exists
+    if (signUpData?.user && (!signUpData.user.identities || signUpData.user.identities.length === 0)) {
+      return { success: false, error: "This mobile number is already registered. Please login." };
     }
     return { success: true };
   }, []);
