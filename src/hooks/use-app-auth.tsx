@@ -16,6 +16,12 @@ function mobileToEmail(mobile: string): string {
   return `m${mobile}@gymlog.app`;
 }
 
+// Derive a Supabase-compatible password from 4-digit pin
+// Supabase requires min 6 chars, so we pad deterministically
+function pinToPassword(pin: string): string {
+  return `gym${pin}!`;
+}
+
 // ─── Context ─────────────────────────────────────────────────
 interface AppAuthContextValue {
   user: AppUser | null;
@@ -108,7 +114,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     const email = mobileToEmail(trimmed);
     // Password is the last 4 digits of mobile number
     const pin = passcode.replace(/\D/g, "").slice(-4);
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pin });
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pinToPassword(pin) });
     if (error) {
       if (error.message === "Invalid login credentials") {
         return { success: false, error: "Invalid mobile number or passcode." };
@@ -141,7 +147,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     const email = mobileToEmail(trimmed);
     const { data: signUpData, error } = await supabase.auth.signUp({
       email,
-      password: trimmed.slice(-4),
+      password: pinToPassword(trimmed.slice(-4)),
       options: {
         data: {
           full_name: name.trim(),
