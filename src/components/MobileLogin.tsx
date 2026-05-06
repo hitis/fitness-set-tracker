@@ -11,6 +11,7 @@ export function MobileLogin() {
   const [passcode, setPasscode] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [isTrainer, setIsTrainer] = useState(false);
 
@@ -64,10 +65,21 @@ export function MobileLogin() {
     const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
       setError("");
+      setSuccessMsg("");
       setLoading(true);
       const result = await register(name, mobile, isTrainer);
       setLoading(false);
-      if (!result.success) setError(result.error || "Registration failed.");
+      if (!result.success) {
+        setError(result.error || "Registration failed.");
+      } else {
+        setSuccessMsg("Account created successfully! Redirecting to login...");
+        setTimeout(() => {
+          setMode("login");
+          setSuccessMsg("");
+          setError("");
+          setPasscode(mobile.replace(/\D/g, "").slice(-4));
+        }, 1500);
+      }
     };
 
     return (
@@ -122,6 +134,7 @@ export function MobileLogin() {
                 {isTrainer ? "You'll get trainer + member access" : "Default: member access"}
               </span>
             </div>
+            {successMsg && <p className="text-sm text-primary font-medium">{successMsg}</p>}
             {error && <p className="text-sm text-destructive font-medium">{error}</p>}
             <Button type="submit" className="h-14 w-full text-base font-bold" size="lg" disabled={loading}>
               {loading ? "Registering..." : "Register"}
