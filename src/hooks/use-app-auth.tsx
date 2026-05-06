@@ -16,6 +16,12 @@ function mobileToEmail(mobile: string): string {
   return `m${mobile}@gymlog.app`;
 }
 
+// Derive a Supabase-compatible password from 4-digit pin
+// Supabase requires min 6 chars, so we pad deterministically
+function pinToPassword(pin: string): string {
+  return `gym${pin}!`;
+}
+
 // ─── Context ─────────────────────────────────────────────────
 interface AppAuthContextValue {
   user: AppUser | null;
@@ -106,8 +112,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (mobile: string, passcode: string) => {
     const trimmed = mobile.replace(/\D/g, "");
     const email = mobileToEmail(trimmed);
-    // Password is the full mobile number
-    const { error } = await supabase.auth.signInWithPassword({ email, password: trimmed });
+    // Password is the last 4 digits of mobile number
+    const pin = passcode.replace(/\D/g, "").slice(-4);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: pinToPassword(pin) });
     if (error) {
       if (error.message === "Invalid login credentials") {
         return { success: false, error: "Invalid mobile number or passcode." };
@@ -138,9 +145,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: "Name is required." };
     }
     const email = mobileToEmail(trimmed);
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email,
-      password: trimmed,
+      password: pinToPassword(trimmed.slice(-4)),
       options: {
         data: {
           full_name: name.trim(),
@@ -156,6 +163,10 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: "Too many attempts. Please wait a moment and try again." };
       }
       return { success: false, error: error.message };
+    }
+    // Supabase returns a fake user with no identities if email already exists
+    if (signUpData?.user && (!signUpData.user.identities || signUpData.user.identities.length === 0)) {
+      return { success: false, error: "This mobile number is already registered. Please login." };
     }
     return { success: true };
   }, []);
