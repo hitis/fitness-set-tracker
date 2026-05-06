@@ -31,6 +31,31 @@ import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
+function DateNav({ selectedDate, onChange }: { selectedDate: string; onChange: (d: string) => void }) {
+  const shift = (days: number) => {
+    const d = new Date(selectedDate + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    onChange(d.toISOString().slice(0, 10));
+  };
+  const isToday = selectedDate === new Date().toISOString().slice(0, 10);
+  return (
+    <div className="flex w-full items-center justify-between rounded-xl bg-card border border-border px-3 py-2">
+      <button onClick={() => shift(-1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-foreground">
+          {isToday ? "Today" : format(new Date(selectedDate + "T00:00:00"), "EEE, MMM d")}
+        </p>
+        {isToday && <p className="text-[10px] text-muted-foreground">{format(new Date(), "MMM d")}</p>}
+      </div>
+      <button onClick={() => shift(1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const activeUserId = userId || "demo-user-001";
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
