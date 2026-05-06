@@ -109,7 +109,13 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     // Password is the full mobile number
     const { error } = await supabase.auth.signInWithPassword({ email, password: trimmed });
     if (error) {
-      return { success: false, error: error.message === "Invalid login credentials" ? "Invalid mobile number or passcode." : error.message };
+      if (error.message === "Invalid login credentials") {
+        return { success: false, error: "Invalid mobile number or passcode." };
+      }
+      if (error.message === "Email not confirmed" || error.message.includes("email_not_confirmed")) {
+        return { success: false, error: "Account not yet active. Please try again in a moment." };
+      }
+      return { success: false, error: error.message };
     }
     // hydrateUser will be called by onAuthStateChange
     // Check roles to decide if role select needed
@@ -145,6 +151,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       if (error.message.includes("already registered")) {
         return { success: false, error: "An account with this number already exists. Please login." };
+      }
+      if (error.message.includes("over_email_send_rate_limit") || error.message.includes("rate limit")) {
+        return { success: false, error: "Too many attempts. Please wait a moment and try again." };
       }
       return { success: false, error: error.message };
     }

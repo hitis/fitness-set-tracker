@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Check, AlertTriangle, X } from "lucide-react";
-import type { DemoExercise, BlockType, PreviousEntry, ConditioningLogEntry } from "@/hooks/use-demo";
+import type { DemoExercise, BlockType, PreviousEntry, ConditioningLogEntry } from "@/lib/workout-types";
 import {
   sanitizeDecimal,
   sanitizeInteger,

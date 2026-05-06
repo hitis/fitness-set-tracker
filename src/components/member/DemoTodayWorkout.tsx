@@ -4,34 +4,61 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
-import {
-  type DemoBlock,
-  type DemoExercise,
-  type BlockType,
-  type PreviousEntry,
-  type WorkoutLog,
-  type WorkoutLogSet,
-  type ConditioningLogEntry,
-} from "@/hooks/use-demo";
+import type {
+  DemoBlock,
+  DemoExercise,
+  BlockType,
+  PreviousEntry,
+  WorkoutLog,
+  WorkoutLogSet,
+  ConditioningLogEntry,
+} from "@/lib/workout-types";
 import {
   loadPublishedWorkoutForDate,
   upsertMultipleSetLogs,
   upsertSession,
   loadSetLogs,
   loadSession,
+  loadExerciseHistory,
   type DbWorkout,
   type DbSetLog,
 } from "@/lib/supabase-data";
 import { DemoExerciseLogger } from "./DemoExerciseLogger";
 import { DemoConditioningLogger } from "./DemoConditioningLogger";
 import { ChevronRight, Check, Trophy, AlertTriangle, ArrowLeft, Pencil, Eye, TrendingUp, Dumbbell } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 const CONDITIONING_TYPES: BlockType[] = ["emom", "amrap", "tabata", "finisher", "conditioning"];
 
+function DateNav({ selectedDate, onChange }: { selectedDate: string; onChange: (d: string) => void }) {
+  const shift = (days: number) => {
+    const d = new Date(selectedDate + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    onChange(d.toISOString().slice(0, 10));
+  };
+  const isToday = selectedDate === new Date().toISOString().slice(0, 10);
+  return (
+    <div className="flex w-full items-center justify-between rounded-xl bg-card border border-border px-3 py-2">
+      <button onClick={() => shift(-1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-foreground">
+          {isToday ? "Today" : format(new Date(selectedDate + "T00:00:00"), "EEE, MMM d")}
+        </p>
+        {isToday && <p className="text-[10px] text-muted-foreground">{format(new Date(), "MMM d")}</p>}
+      </div>
+      <button onClick={() => shift(1)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary">
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; userId?: string }) {
   const activeUserId = userId || "demo-user-001";
-  const todayDate = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Load published workout from Supabase
   const [workout, setWorkout] = useState<DbWorkout | null>(null);
@@ -39,9 +66,11 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
   useEffect(() => {
     let mounted = true;
+    setLoadingWorkout(true);
+    setWorkout(null);
     async function load() {
       try {
-        const w = await loadPublishedWorkoutForDate(todayDate);
+        const w = await loadPublishedWorkoutForDate(selectedDate);
         if (mounted) setWorkout(w);
       } catch (e) {
         console.error("Failed to load workout", e);
@@ -50,28 +79,25 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     }
     load();
     return () => { mounted = false; };
-  }, [todayDate]);
+  }, [selectedDate]);
 
   if (loadingWorkout) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4 p-4">
+        <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
-  // No published workout for today
+  // No published workout for selected day
   if (!workout) {
     return (
       <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        {onBack && (
-          <button onClick={onBack} className="self-start flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        )}
+        <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
         <Dumbbell className="h-12 w-12 text-muted-foreground" />
-        <h2 className="text-xl font-bold text-foreground">No workout published for today</h2>
-        <p className="text-sm text-muted-foreground text-center">Your trainer hasn't published a workout for today yet. Check back later!</p>
+        <h2 className="text-xl font-bold text-foreground">No workout for this day</h2>
+        <p className="text-sm text-muted-foreground text-center">No published workout found. Try a different date.</p>
       </div>
     );
   }
@@ -108,7 +134,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   const [log, setLog] = useState<WorkoutLog>({
     user_id: activeUserId,
     workout_id: workout?.id ?? "",
-    workout_date: todayDate,
+    workout_date: selectedDate,
     status: "not_started",
     session_rpe: null,
     session_notes: null,
@@ -165,6 +191,7 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
 
   const [selectedExercise, setSelectedExercise] = useState<{ exercise: DemoExercise; block: DemoBlock } | null>(null);
   const [exerciseHistoryView, setExerciseHistoryView] = useState<{ exercise: DemoExercise; history: PreviousEntry[] } | null>(null);
+  const [exerciseHistoryCache, setExerciseHistoryCache] = useState<Record<string, PreviousEntry[]>>({});
   const [showFinish, setShowFinish] = useState(false);
   const [showSavedSummary, setShowSavedSummary] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -322,10 +349,28 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
     );
   }
 
+  // Load exercise history when an exercise is selected
+  useEffect(() => {
+    if (!selectedExercise || !workout) return;
+    const exId = selectedExercise.exercise.exercise_id;
+    if (exerciseHistoryCache[exId]) return; // already loaded
+    let mounted = true;
+    loadExerciseHistory(activeUserId, exId, workout.id).then((perfs) => {
+      if (!mounted) return;
+      const mapped: PreviousEntry[] = perfs.map(p => ({
+        date: p.date,
+        sets: p.sets,
+        notes: p.notes,
+      }));
+      setExerciseHistoryCache(prev => ({ ...prev, [exId]: mapped }));
+    }).catch(e => console.error("Failed to load exercise history", e));
+    return () => { mounted = false; };
+  }, [selectedExercise, activeUserId, workout]);
+
   // Selected exercise → logger
   if (selectedExercise) {
     const isCond = CONDITIONING_TYPES.includes(selectedExercise.block.block_type);
-    const history: PreviousEntry[] = [];
+    const history: PreviousEntry[] = exerciseHistoryCache[selectedExercise.exercise.exercise_id] || [];
     if (isCond) {
       return (
         <DemoConditioningLogger
@@ -658,12 +703,8 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   // ─── Main workout logging view ─────────────────────────────
   return (
     <div className="p-4 space-y-5">
-      {/* Back button */}
-      {onBack && (
-        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-      )}
+      {/* Date Navigation */}
+      <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
 
       {/* Workout Header */}
       <div className="rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 border-primary/20">
