@@ -703,12 +703,8 @@ export function DemoTodayWorkout({ onBack, userId }: { onBack?: () => void; user
   // ─── Main workout logging view ─────────────────────────────
   return (
     <div className="p-4 space-y-5">
-      {/* Back button */}
-      {onBack && (
-        <button onClick={onBack} className="flex h-10 w-10 items-center justify-center rounded-xl bg-card text-muted-foreground">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-      )}
+      {/* Date Navigation */}
+      <DateNav selectedDate={selectedDate} onChange={setSelectedDate} />
 
       {/* Workout Header */}
       <div className="rounded-xl border bg-gradient-to-br from-card to-card/80 p-4 space-y-2 border-primary/20">
