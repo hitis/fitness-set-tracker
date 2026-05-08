@@ -171,10 +171,29 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     // Safety net: if trainer signup, ensure trainer role exists
     // The DB trigger should handle this, but we double-check here
     if (isTrainer && signUpData?.user) {
-      await supabase.from("user_roles").upsert(
+      // Sign in to establish session so RLS auth.uid() is available
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: pinToPassword(trimmed.slice(-4)),
+      });
+      if (signInErr) {
+        console.error("[GymLog] Post-signup sign-in failed:", signInErr.message);
+      }
+      // Now upsert trainer role with active session
+      const { error: roleErr } = await supabase.from("user_roles").upsert(
         { user_id: signUpData.user.id, role: "trainer" as any },
         { onConflict: "user_id,role" }
       );
+      if (roleErr) {
+        console.error("[GymLog] Trainer role insert failed:", roleErr.message);
+        return { success: false, error: "Trainer role could not be assigned. Please contact admin." };
+      }
+      // Verify both roles exist
+      const roles = await fetchRoles(signUpData.user.id);
+      console.log("[GymLog] Roles after trainer registration:", roles);
+      if (!roles.includes("trainer" as UserRole)) {
+        return { success: false, error: "Trainer role could not be assigned. Please contact admin." };
+      }
     }
     return { success: true };
   }, []);
