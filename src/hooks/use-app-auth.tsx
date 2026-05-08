@@ -168,6 +168,14 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     if (signUpData?.user && (!signUpData.user.identities || signUpData.user.identities.length === 0)) {
       return { success: false, error: "This mobile number is already registered. Please login." };
     }
+    // Safety net: if trainer signup, ensure trainer role exists
+    // The DB trigger should handle this, but we double-check here
+    if (isTrainer && signUpData?.user) {
+      await supabase.from("user_roles").upsert(
+        { user_id: signUpData.user.id, role: "trainer" as any },
+        { onConflict: "user_id,role" }
+      );
+    }
     return { success: true };
   }, []);
 
