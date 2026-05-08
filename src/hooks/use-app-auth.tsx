@@ -166,13 +166,15 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: "Name is required." };
     }
     const email = mobileToEmail(trimmed);
+    const requestedRole = isTrainer ? "trainer" : "member";
+    console.info("[GymLog] Register signup metadata:", { app_role: requestedRole, isTrainer: !!isTrainer });
     const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password: pinToPassword(trimmed.slice(-4)),
       options: {
         data: {
           full_name: name.trim(),
-          app_role: isTrainer ? "trainer" : "member",
+          app_role: requestedRole,
         },
       },
     });
@@ -189,32 +191,13 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     if (signUpData?.user && (!signUpData.user.identities || signUpData.user.identities.length === 0)) {
       return { success: false, error: "This mobile number is already registered. Please login." };
     }
-    // Safety net: if trainer signup, ensure trainer role exists
-    // The DB trigger should handle this, but we double-check here
-    if (isTrainer && signUpData?.user) {
-      // Sign in to establish session so RLS auth.uid() is available
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email,
-        password: pinToPassword(trimmed.slice(-4)),
+    if (isTrainer && signUpData?.user?.user_metadata?.app_role !== "trainer") {
+      console.error("[GymLog] Trainer toggle did not reach signup metadata.", {
+        expected: "trainer",
+        received: signUpData?.user?.user_metadata?.app_role,
+        userId: signUpData?.user?.id,
       });
-      if (signInErr) {
-        console.error("[GymLog] Post-signup sign-in failed:", signInErr.message);
-      }
-      // Now upsert trainer role with active session
-      const { error: roleErr } = await supabase.from("user_roles").upsert(
-        { user_id: signUpData.user.id, role: "trainer" as any },
-        { onConflict: "user_id,role" }
-      );
-      if (roleErr) {
-        console.error("[GymLog] Trainer role insert failed:", roleErr.message);
-        return { success: false, error: "Trainer role could not be assigned. Please contact admin." };
-      }
-      // Verify both roles exist
-      const roles = await fetchRoles(signUpData.user.id);
-      console.log("[GymLog] Roles after trainer registration:", roles);
-      if (!roles.includes("trainer" as UserRole)) {
-        return { success: false, error: "Trainer role could not be assigned. Please contact admin." };
-      }
+      return { success: false, error: "Trainer signup metadata was missing. Please try registering again." };
     }
     return { success: true };
   }, []);
