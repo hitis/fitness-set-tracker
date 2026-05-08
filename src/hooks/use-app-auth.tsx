@@ -39,20 +39,28 @@ interface AppAuthContextValue {
 const AppAuthContext = createContext<AppAuthContextValue | null>(null);
 
 async function fetchRoles(userId: string): Promise<UserRole[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", userId);
-  if (!data || data.length === 0) return ["member"];
+  if (error) {
+    console.error("[GymLog] Failed to load user roles:", error.message);
+    return [];
+  }
+  if (!data || data.length === 0) return [];
   return data.map((r) => r.role as unknown as string).filter((r) => r === "member" || r === "trainer") as UserRole[];
 }
 
-async function fetchProfile(userId: string): Promise<string> {
-  const { data } = await supabase
+async function fetchProfile(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
     .from("profiles")
     .select("full_name")
     .eq("id", userId)
     .single();
+  if (error) {
+    console.error("[GymLog] Failed to load user profile:", error.message);
+    return null;
+  }
   return data?.full_name || "User";
 }
 
@@ -93,6 +101,19 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       fetchRoles(authUser.id),
       fetchProfile(authUser.id),
     ]);
+    if (!name || roles.length === 0) {
+      console.error("[GymLog] Signed-in user has no profile or roles. Signing out to recover stale/deleted session.", {
+        userId: authUser.id,
+        hasProfile: !!name,
+        roles,
+      });
+      if (typeof window !== "undefined") sessionStorage.removeItem("gymlog-active-role");
+      await supabase.auth.signOut();
+      setUser(null);
+      setActiveRole(null);
+      setNeedsRoleSelect(false);
+      return;
+    }
     const appUser: AppUser = { id: authUser.id, name, roles };
     setUser(appUser);
 
